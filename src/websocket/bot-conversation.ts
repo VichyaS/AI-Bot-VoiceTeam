@@ -10,9 +10,8 @@ import {
   ProtocolMessage,
   VaicToBotMessageName
 } from './types.js';
-import ee2, { type Listener } from 'eventemitter2';
+import { EventEmitter2, type Listener } from 'eventemitter2';
 import { PassThrough, Readable, } from 'stream';
-const { EventEmitter2 } = ee2;
 
 const log = debug('ac-bot-api');
 
@@ -43,13 +42,11 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
 
   constructor(private websocket: WebSocket) {
     super();
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     websocket.on('message', async (message) => {
       // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const msgStr = message.toString();
       if (msgStr.startsWith('{'))
         try {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           await this.onJson(JSON.parse(msgStr));
         } catch (err) {
           this.#log('Error parsing JSON message:', msgStr, err);
@@ -121,11 +118,9 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
           await this.send(BotToVaicMessageName.sessionAccepted, {
             mediaFormat: this.mediaFormat
           });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
           this.#log('Error handling conversation.start:', error);
           await this.send(BotToVaicMessageName.sessionError, {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             reason: `Error handling conversation.start: ${error.message || error}`,
           });
           this.close();
@@ -213,7 +208,7 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
     return this.send(BotToVaicMessageName.userStreamSpeechCommitted, { participant });
   }
 
-  async playTextMessage(text: string, params?: Record<string, unknown>) {
+  playTextMessage(text: string, params?: Record<string, unknown>) {
     return this.sendActivity({
       type: BotActivityType.message,
       text,

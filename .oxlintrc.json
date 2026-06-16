@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "options": {
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error",
+    "typeAware": true
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**"
+  ],
+  "rules": {
+    "accessor-pairs": "error",
+    "complexity": "error",
+    "consistent-return": "error",
+    "default-case": "error",
+    "func-names": "error",
+    "id-length": "off",
+    "max-depth": "error",
+    "max-params": "error",
+    "max-statements": ["error", 40],
+    "no-await-in-loop": "error",
+    "no-bitwise": "error",
+    "no-console": "error",
+    "no-duplicate-imports": "error",
+    "no-negated-condition": "error",
+    "no-param-reassign": "error",
+    "no-redeclare": "error",
+    "no-process-exit": "error",
+    "no-shadow": "error",
+    "no-underscore-dangle": [
+      "error",
+      {
+        "allowAfterThis": true,
+        "allowAfterSuper": true
+      }
+    ],
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "prefer-const": "error",
+    "prefer-promise-reject-errors": "error",
+    "require-await": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/unbound-method": [
+      "error",
+      {
+        "ignoreStatic": true
+      }
+    ],
+    "unicorn/no-thenable": "error"
+  }
+}

@@ -40,7 +40,6 @@ export class BotApiWebSocket extends EventEmitter2 {
     });
     webSockServer.on('connection', (websocket: WebSocket, request: IncomingMessage) => {
       const conversation = new BotConversationWebSocket(websocket);
-      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       conversation.on('conversation.start', (initiateMessage: ProtocolMessage) => {
         return this.emitAsync('conversation', conversation, { request, initiateMessage });
       });
