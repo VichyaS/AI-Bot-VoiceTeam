@@ -33,7 +33,7 @@ export class BotApiWebSocket extends EventEmitter2 {
     const webSockServer = new WebSocketServer({
       perMessageDeflate: false,
       server: this.server,
-      verifyClient: (info: { req: IncomingMessage }) => {
+      verifyClient: (info: { req: IncomingMessage; }) => {
         // Verify the client has the correct authorization token
         return !options?.token || info.req.headers.authorization === `Bearer ${options.token}`;
       }

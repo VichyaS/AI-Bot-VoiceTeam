@@ -1,0 +1,40 @@
+{
+  "lineWidth": 130,
+  "indentWidth": 2,
+  "useTabs": false,
+  "newLineKind": "lf",
+  "includes": [
+    "**/*.{ts,js,mjs,cjs}"
+  ],
+  "excludes": [
+    "node_modules/**",
+    "dist/**",
+    "oxlint.json"
+  ],
+  "typescript": {
+    "quoteStyle": "preferSingle",
+    "jsx.quoteStyle": "preferSingle",
+    "semiColons": "always",
+    "trailingCommas": "onlyMultiLine",
+    "arguments.trailingCommas": "never",
+    "parameters.trailingCommas": "never",
+    "objectExpression.trailingCommas": "never",
+    "quoteProps": "asNeeded",
+    "useBraces": "preferNone",
+    "bracePosition": "sameLine",
+    "singleBodyPosition": "nextLine",
+    "nextControlFlowPosition": "sameLine",
+    "operatorPosition": "sameLine",
+    "conditionalExpression.operatorPosition": "nextLine",
+    "arrowFunction.useParentheses": "force",
+    "binaryExpression.linePerExpression": false,
+    "memberExpression.linePerExpression": false,
+    "module.sortImportDeclarations": "maintain",
+    "module.sortExportDeclarations": "maintain",
+    "importDeclaration.sortNamedImports": "maintain",
+    "exportDeclaration.sortNamedExports": "maintain"
+  },
+  "plugins": [
+    "./node_modules/@dprint/typescript/plugin.wasm"
+  ]
+}

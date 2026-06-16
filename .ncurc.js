@@ -4,4 +4,4 @@ export default {
       return 'minor';
     return 'latest';
   }
-}
+};

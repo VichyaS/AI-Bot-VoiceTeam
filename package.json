@@ -8,6 +8,8 @@
   "scripts": {
     "build": "rimraf dist && tsc",
     "build:watch": "tsc --watch",
+    "format": "dprint fmt",
+    "format:check": "dprint check",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
@@ -33,10 +35,12 @@
   },
   "homepage": "https://github.com/audiocodes/ac-bot-api#readme",
   "devDependencies": {
+    "@dprint/typescript": "^0.96.1",
     "@tsconfig/node22": "^22.0.5",
     "@types/debug": "^4.1.13",
     "@types/node": "^22.19.21",
     "@types/ws": "^8.18.1",
+    "dprint": "^0.54.0",
     "globals": "^17.6.0",
     "oxlint": "^1.70.0",
     "oxlint-tsgolint": "^0.23.0",

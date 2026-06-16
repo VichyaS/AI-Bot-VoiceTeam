@@ -8,10 +8,10 @@ import {
   MediaFormat,
   PlayAudioOptions,
   ProtocolMessage,
-  VaicToBotMessageName
+  VaicToBotMessageName,
 } from './types.js';
 import { EventEmitter2, type Listener } from 'eventemitter2';
-import { PassThrough, Readable, } from 'stream';
+import { PassThrough, Readable } from 'stream';
 
 const log = debug('ac-bot-api');
 
@@ -24,10 +24,9 @@ function redactMessage(message: ProtocolMessage) {
   };
 }
 
-
 declare interface BotConversationEvents {
   on(event: 'conversation.start', listener: (message: ProtocolMessage) => Promise<void>): this | Listener;
-  on(event: 'userStream', listener: (stream: PassThrough, options: { message: ProtocolMessage }) => void): this | Listener;
+  on(event: 'userStream', listener: (stream: PassThrough, options: { message: ProtocolMessage; }) => void): this | Listener;
   on(event: 'activity', listener: (activity: BotActivity) => void): this | Listener;
   on(event: 'end', listener: (message?: ProtocolMessage) => void): this | Listener;
   on(event: 'error', listener: (error: Error) => void): this | Listener;
@@ -38,19 +37,20 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
   private mediaFormat = MediaFormat.RAW_LINEAR_16;
   private recordingSeq = 0;
   private sendBackIncomingVoice?: NodeJS.Timeout;
-  private userAudio = new Map<string|undefined, PassThrough>();
+  private userAudio = new Map<string | undefined, PassThrough>();
 
   constructor(private websocket: WebSocket) {
     super();
     websocket.on('message', async (message) => {
       // eslint-disable-next-line @typescript-eslint/no-base-to-string
       const msgStr = message.toString();
-      if (msgStr.startsWith('{'))
+      if (msgStr.startsWith('{')) {
         try {
           await this.onJson(JSON.parse(msgStr));
         } catch (err) {
           this.#log('Error parsing JSON message:', msgStr, err);
         }
+      }
     });
     websocket.on('close', () => {
       this.#log('connection closed');
@@ -72,9 +72,8 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
     this.send(BotToVaicMessageName.playStreamStart, { mediaFormat: this.mediaFormat, streamId: currentId, ...options })
       .then(() => {
         stream.on('data', (chunk: Buffer | string) => {
-          if (streamEnded || this.ended) {
+          if (streamEnded || this.ended)
             return;
-          }
           this.send(BotToVaicMessageName.playStreamChunk, {
             audioChunk: chunk.toString('base64'),
             streamId: currentId
@@ -92,12 +91,12 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
           });
         });
       })
-      .catch(() => { });
+      .catch(() => {});
   }
 
   close(msgJson?: ProtocolMessage) {
     if (this.ended)
-      return
+      return;
     this.emit('end', msgJson);
     this.websocket.close();
     this.ended = true;
@@ -121,7 +120,7 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
         } catch (error: any) {
           this.#log('Error handling conversation.start:', error);
           await this.send(BotToVaicMessageName.sessionError, {
-            reason: `Error handling conversation.start: ${error.message || error}`,
+            reason: `Error handling conversation.start: ${error.message || error}`
           });
           this.close();
         }
@@ -130,8 +129,12 @@ export class BotConversationWebSocket extends EventEmitter2 implements BotConver
       case VaicToBotMessageName.sessionResume:
         if (msgJson.conversationId === this.conversationId)
           await this.send(BotToVaicMessageName.sessionAccepted);
-        else
-          await this.send(BotToVaicMessageName.sessionError, { conversationId: msgJson.conversationId, reason: 'conversation not found' });
+        else {
+          await this.send(BotToVaicMessageName.sessionError, {
+            conversationId: msgJson.conversationId,
+            reason: 'conversation not found'
+          });
+        }
         break;
       case VaicToBotMessageName.userStreamStart:
         this.userAudio.set(msgJson.participant, new PassThrough());

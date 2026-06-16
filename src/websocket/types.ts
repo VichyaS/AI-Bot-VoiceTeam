@@ -1,7 +1,6 @@
-
 export enum BotActivityType {
   message = 'message',
-  event = 'event'
+  event = 'event',
 }
 
 export enum BotActivityEventName {
@@ -24,7 +23,7 @@ export enum BotActivityEventName {
   speakerVerificationVerify = 'speakerVerificationVerify',
   abortPrompts = 'abortPrompts',
   expectAnotherBotMessage = 'expectAnotherBotMessage',
-  sendDtmf = 'sendDtmf'
+  sendDtmf = 'sendDtmf',
 }
 export interface BaseActivity {
   activityParams?: Record<string, unknown>;
@@ -62,7 +61,7 @@ export enum VaicToBotMessageName {
   activities = 'activities',
   userStreamStart = 'userStream.start',
   userStreamChunk = 'userStream.chunk',
-  userStreamStop = 'userStream.stop'
+  userStreamStop = 'userStream.stop',
 }
 
 export enum BotToVaicMessageName {
@@ -78,19 +77,19 @@ export enum BotToVaicMessageName {
   userStreamSpeechCommitted = 'userStream.speech.committed',
   playStreamStart = 'playStream.start',
   playStreamChunk = 'playStream.chunk',
-  playStreamStop = 'playStream.stop'
+  playStreamStop = 'playStream.stop',
 }
 
 export enum MediaFormat {
   RAW_LINEAR_16 = 'raw/lpcm16',
-  RAW_LINEAR_16_24 = 'raw/lpcm16_24'
-};
+  RAW_LINEAR_16_24 = 'raw/lpcm16_24',
+}
 
 export interface PlayAudioOptions {
   altText?: string;
   activityParams?: Record<string, unknown>;
   mediaFormat?: MediaFormat;
-};
+}
 
 export interface ProtocolMessage extends PlayAudioOptions {
   type: VaicToBotMessageName | BotToVaicMessageName;
@@ -98,8 +97,8 @@ export interface ProtocolMessage extends PlayAudioOptions {
   expectAudioMessages?: boolean;
   supportedMediaFormats?: string[];
   caller?: string;
-  participant?: string
+  participant?: string;
   activities?: BotActivity[];
   audioChunk?: string;
   [key: string]: unknown;
-};
+}
