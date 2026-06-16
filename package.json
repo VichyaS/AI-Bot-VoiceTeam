@@ -36,7 +36,7 @@
   "homepage": "https://github.com/audiocodes/ac-bot-api#readme",
   "devDependencies": {
     "@dprint/typescript": "^0.96.1",
-    "@tsconfig/node22": "^22.0.5",
+    "@tsconfig/node24": "^24.0.4",
     "@types/debug": "^4.1.13",
     "@types/node": "^22.19.21",
     "@types/ws": "^8.18.1",
