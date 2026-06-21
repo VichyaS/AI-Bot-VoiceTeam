@@ -38,7 +38,7 @@
     "@dprint/typescript": "^0.96.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/debug": "^4.1.13",
-    "@types/node": "^22.19.21",
+    "@types/node": "^24.13.2",
     "@types/ws": "^8.18.1",
     "dprint": "^0.54.0",
     "globals": "^17.6.0",
