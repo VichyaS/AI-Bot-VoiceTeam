@@ -12,11 +12,13 @@ export interface BotApiServerOptions {
   server?: http.Server;
   host?: string;
   port?: number;
+  path?: string;
   token?: string;
 }
 
 export class BotApiWebSocket extends EventEmitter2 {
   private server?: http.Server;
+  private ownServer = false;
   #port = 8080;
 
   get port() {
@@ -28,28 +30,53 @@ export class BotApiWebSocket extends EventEmitter2 {
     if (options?.port)
       this.#port = options.port;
 
-    this.server.keepAliveTimeout = 30000;
-    this.server.listen(this.#port, options?.host, callback);
-    const webSockServer = new WebSocketServer({
-      perMessageDeflate: false,
-      server: this.server,
-      verifyClient: (info: { req: IncomingMessage; }) => {
-        // Verify the client has the correct authorization token
-        return !options?.token || info.req.headers.authorization === `Bearer ${options.token}`;
-      }
-    });
-    webSockServer.on('connection', (websocket: WebSocket, request: IncomingMessage) => {
+    const verifyClient = (info: { req: IncomingMessage; }) => {
+      return !options?.token || info.req.headers.authorization === `Bearer ${options.token}`;
+    };
+
+    const handleConnection = (websocket: WebSocket, request: IncomingMessage) => {
       const conversation = new BotConversationWebSocket(websocket);
       conversation.on('conversation.start', (initiateMessage: ProtocolMessage) => {
         return this.emitAsync('conversation', conversation, { request, initiateMessage });
       });
-    });
+    };
+
+    if (options?.path) {
+      const webSockServer = new WebSocketServer({
+        perMessageDeflate: false,
+        noServer: true,
+      });
+      webSockServer.on('connection', handleConnection);
+      this.server.on('upgrade', (request: IncomingMessage, socket, head) => {
+        const url = new URL(request.url!, `http://${request.headers.host}`);
+        if (url.pathname !== options.path)
+          return;
+        if (!verifyClient({ req: request })) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        webSockServer.handleUpgrade(request, socket, head, (ws) => {
+          webSockServer.emit('connection', ws, request);
+        });
+      });
+    } else {
+      this.server.keepAliveTimeout = 30000;
+      this.ownServer = true;
+      this.server.listen(this.#port, options?.host, callback);
+      const webSockServer = new WebSocketServer({
+        perMessageDeflate: false,
+        server: this.server,
+        verifyClient,
+      });
+      webSockServer.on('connection', handleConnection);
+    }
 
     return this;
   }
 
   close() {
-    if (this.server?.listening) {
+    if (this.ownServer && this.server?.listening) {
       this.server.close(() => {
         log('Bot API server closed.');
       });
