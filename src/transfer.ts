@@ -1,0 +1,59 @@
+import { BotActivity, BotActivityEventName, BotActivityType } from './websocket/types.js';
+import { cleanTextForThaiTts } from './tts-cleaner.js';
+import { getConfig } from './config-manager.js';
+
+/**
+ * Builds a SIP URI with optional port and transport parameters.
+ * Example: sip:somchai@company.com:5061;transport=tls
+ */
+function buildSipUri(target: string): string {
+  const cfg = getConfig();
+  const domain = cfg.sipDomain?.replace(/^sip:/iu, '') || 'company.com';
+  const port = cfg.sbcPort || 5061;
+  const transport = (cfg.transferProtocol || 'TLS').toLowerCase();
+
+  // If target is already a full SIP URI (contains @), use it as-is
+  if (target.includes('@')) {
+    return `sip:${target}:${port};transport=${transport}`;
+  }
+  // Otherwise treat as UPN
+  return `sip:${target}:${port};transport=${transport}`;
+}
+
+/**
+ * Generates a valid AudioCodes VoiceAI Connect transfer activity response object.
+ *
+ * @param targetUpn - The userPrincipalName of the target (e.g. "somchai@contoso.com").
+ * @param promptText - Optional fallback TTS prompt to play before transferring.
+ * @returns An object with `activities` array containing the transfer event and a
+ *          preceding TTS prompt message.
+ */
+export function generateTransferResponse(
+  targetUpn: string,
+  promptText?: string,
+): { activities: BotActivity[] } {
+  const fallbackPrompt = promptText || 'กำลังโอนสายไปยังผู้รับสายค่ะ';
+
+  // Build the SIP URI with port and transport
+  const sipUri = buildSipUri(targetUpn);
+
+  // 1. A TTS message to play before the transfer
+  const promptActivity: BotActivity = {
+    type: BotActivityType.message,
+    text: cleanTextForThaiTts(fallbackPrompt),
+  };
+
+  // 2. The transfer event with the SIP target in parameters
+  const transferActivity: BotActivity = {
+    type: BotActivityType.event,
+    name: BotActivityEventName.transfer,
+    parameters: {
+      target: sipUri,
+      routingMode: getConfig().routingMode || 'Blind Transfer',
+    },
+  };
+
+  return {
+    activities: [promptActivity, transferActivity],
+  };
+}

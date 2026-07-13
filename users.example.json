@@ -1,0 +1,14 @@
+[
+  {
+    "username": "superadmin",
+    "role": "SUPER_ADMIN",
+    "displayName": "Super Admin",
+    "passwordHash": "$2b$10$..."
+  },
+  {
+    "username": "operator1",
+    "role": "IVR_MANAGER",
+    "displayName": "Operator 1",
+    "passwordHash": "$2b$10$..."
+  }
+]

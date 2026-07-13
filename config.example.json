@@ -1,0 +1,37 @@
+{
+  "webhookSecret": "",
+  "welcomeMessage": "สวัสดีค่ะ ต้องการติดต่อใครคะ?",
+  "fallbackMessage": "ขออภัยค่ะ ไม่พบชื่อนี้ในระบบ กรุณาลองใหม่อีกครั้ง",
+  "fallbackDestination": "sip:operator-queue@company.com",
+  "maxRetries": 3,
+  "openRouterApiKey": "",
+  "aiModelId": "openai/gpt-5.6-luna",
+  "systemPrompt": "",
+  "temperature": 0,
+  "maxTokens": 150,
+  "topP": 1,
+  "tenantId": "",
+  "clientId": "",
+  "clientSecret": "",
+  "secretExpiryDate": "",
+  "searchScope": "",
+  "mfaEnabled": false,
+  "mfaAllowedDomain": "",
+  "sipDomain": "sip:company.com",
+  "sbcPort": 5061,
+  "transferProtocol": "TLS",
+  "routingMode": "Blind Transfer",
+  "transferTimeout": 15,
+  "maxMatchResults": 1,
+  "operatorFallbackSip": "sip:operator-queue@company.com",
+  "departments": [
+    {
+      "name": "ฝ่ายไอที",
+      "sipUri": "sip:668101001@placeholder.domain",
+      "aliases": [
+        "ฝ่ายไอที",
+        "IT"
+      ]
+    }
+  ]
+}

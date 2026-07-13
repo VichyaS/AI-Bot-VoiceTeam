@@ -1,3 +1,13 @@
 export * from './websocket/bot-conversation.js';
 export * from './websocket/bot-api.js';
 export * from './websocket/types.js';
+export { extractThaiName } from './extract-name.js';
+export type { AiExtractionResult } from './extract-name.js';
+export { findTeamsUserByThaiName } from './graph-user.js';
+export { generateTransferResponse } from './transfer.js';
+export { generateTransferFallbackResponse } from './transfer-fallback.js';
+export { getDepartmentSipUri } from './department-lookup.js';
+export { getDepartmentRoutes } from './services/routingService.js';
+export type { DepartmentEntry } from './services/routing-types.js';
+export { getConfig, updateConfig, reloadConfig } from './config-manager.js';
+export type { AppConfig } from './config-types.js';

@@ -1,83 +1,339 @@
-# AudioCodes Bot API SDK
+# VoiceTeam Bot — AI-Powered IVR Voice Bot
 
-[![npm](https://img.shields.io/npm/v/@audiocodes/ac-bot-api)](https://www.npmjs.com/package/@audiocodes/ac-bot-api)
+[![Node](https://img.shields.io/badge/node-24%2B-brightgreen)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/typescript-7%2B-blue)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/react-19-blue)](https://react.dev)
+[![Tailwind](https://img.shields.io/badge/tailwind-4-cyan)](https://tailwindcss.com)
 
-AudioCodes [Voice AI Connect](https://techdocs.audiocodes.com/voice-ai-connect) is a platform that
-bridges telephony systems with traditional chat bots and conversational AI bots. It allows
-businesses to automate customer interactions, enhance engagement, and streamline workflows.
+ระบบ IVR Voice Bot อัจฉริยะที่ใช้ AI (OpenRouter) ในการวิเคราะห์คำพูดภาษาไทย เพื่อค้นหาพนักงานจาก Microsoft Entra ID และโอนสายอัตโนมัติผ่าน AudioCodes SBC
 
-This package provides a WebSocket client for the
-[AudiCodes Bot API](https://techdocs.audiocodes.com/voice-ai-connect/#Bot-API/ac-bot-api-mode-websocket.htm),
-enabling developers to create bots that can interact with users in real-time over WebSocket connections.
+---
 
-## AC Bot API WebSocket short overview
-AC Bot API is a protocol that allows developers to create bots that can interact with users in
-real-time over WebSocket connections. It provides a way to send and receive text or voice over
-WebSocket connections.<br><br>
+## ✨ ความสามารถหลัก
 
-## How to use
-The `BotConversationWebSocket` emits the following events:
+| Layer | Technology | Description |
+|-------|-----------|-------------|
+| **IVR Bot** | Express.js | Webhook endpoint สำหรับ AudioCodes VoiceAI Connect |
+| **AI Extractor** | OpenRouter AI | วิเคราะห์เจตนาผู้โทร (ชื่อคน/แผนก/เบอร์ต่อ) ด้วย GPT-5.6 Luna |
+| **Directory Lookup** | Microsoft Graph API | ค้นหาพนักงานจาก Entra ID พร้อมจัดการชื่อซ้ำ |
+| **Call Transfer** | SIP | สร้างคำสั่งโอนสายแบบ Blind / Consultative Transfer |
+| **Admin API** | Express.js + JWT | จัดการ Config, ทดสอบ Connection, WebSocket Logs |
+| **Dashboard UI** | React + Tailwind CSS | Login, Config, Monitor, Unhandled Intents, Departments |
+| **MFA Login** | Microsoft Entra ID | รองรับการล็อกอินด้วย MFA ผ่าน MSAL |
+| **Real-time Logs** | WebSocket | ดู Log การทำงานแบบ Real-time บน Dashboard |
 
-- **`conversation.start`**: Emitted when a session is initiated.
-- **`userStream`**: Emitted when a user stream starts, providing the audio stream and message details.
-- **`activity`**: Emitted when an activity is received.
-- **`end`**: Emitted when the conversation ends.
-- **`error`**: Emitted when an error occurs during message sending.
+---
 
-Here is a sample:
-```typescript
-import {
-  BotConversationWebSocket,
-  BotApiWebSocket,
-  BotActivity,
-  BotActivityEventName,
-  BotActivityType
-} from '@audiocodes/ac-bot-api';
-
-class TextEchoBot {
-  constructor(private botConversation: BotConversationWebSocket) {
-    this.botConversation.on('activity', (activity: BotActivity) => {
-      this.handleActivity(activity);
-    });
-    this.botConversation.on('end', (activity) => {
-      console.log('Conversation ended:', activity);
-    });
-  }
-
-  private handleActivity(activity: BotActivity) {
-    console.log('Received activity:', JSON.stringify(activity));
-    if (activity.type === 'event') {
-      if (activity.name === BotActivityEventName.start) {
-        this.botConversation.playTextMessage('Welcome to sample webSocket Bot! How can I assist you today?');
-        return;
-      }
-    }
-    if (activity.type === 'message' && activity.text) {
-      // delete trailing period
-      const request = activity.text.toLowerCase().replace(/\.$/u, '');
-      if (request === 'disconnect') {
-        return this.botConversation.sendActivity([{
-          type: BotActivityType.event,
-          name: BotActivityEventName.hangup
-        }]);
-      }
-      return this.botConversation.playTextMessage(activity.text);
-    }
-  }
-}
-
-const api = new BotApiWebSocket().listen({
-  port: 8081,
-  token: process.env.ACCESS_TOKEN || 'TOKEN'
-}, () => {
-  console.info(`Bot API listening on port ${api.port}`);
-});
-
-api.on('conversation', (conversation: BotConversationWebSocket, { initiateMessage }) => {
-  console.info(`New conversation started. caller: ${initiateMessage.caller}`);
-  new TextEchoBot(conversation);
-});
+## 📁 Project Structure
 
 ```
+voice-bot-api/
+├── src/
+│   ├── webhook-server.ts              # Express app — จุดรวมทุกอย่าง
+│   ├── config-types.ts                # AppConfig schema, defaults, maskSecrets()
+│   ├── config-manager.ts              # In-memory config store (hot-reload)
+│   ├── auth-jwt.ts                    # JWT sign/verify + middleware
+│   ├── auth-router.ts                 # POST /api/admin/auth/login
+│   ├── mfa-router.ts                  # POST /api/admin/auth/mfa-login
+│   ├── admin-router.ts                # GET/POST /api/admin/config + test-connection
+│   ├── ws-server.ts                   # WebSocket server สำหรับ log streaming
+│   ├── system-logger.ts               # EventEmitter-based log broadcaster
+│   ├── extract-name.ts                # Thai name extraction via OpenRouter AI
+│   ├── graph-user.ts                  # Entra ID lookup (รองรับชื่อซ้ำ)
+│   ├── department-lookup.ts           # แผนก → SIP URI mapping
+│   ├── transfer.ts                    # generateTransferResponse()
+│   ├── transfer-fallback.ts           # Fallback เมื่อโอนสายไม่สำเร็จ
+│   ├── test-connections.ts            # ทดสอบ OpenRouter & Azure AD
+│   ├── unhandled-intents.ts           # บันทึกคำพูดที่ AI แยกไม่ออก
+│   ├── unhandled-router.ts            # API สำหรับ review unhandled intents
+│   ├── department-router.ts           # API สำหรับจัดการแผนก
+│   ├── users-router.ts                # API สำหรับจัดการผู้ใช้
+│   ├── retry-counter.ts               # นับจำนวนครั้งที่โอนสายไม่สำเร็จ
+│   ├── tts-cleaner.ts                 # ทำความสะอาดข้อความก่อน TTS
+│   ├── cache.ts                       # TTL Cache สำหรับ Entra ID + Departments
+│   ├── user-store.ts                  # อ่าน/เขียน users.json
+│   ├── test-route-router.ts           # API สำหรับทดสอบ routing
+│   ├── websocket/                     # Core SDK classes
+│   │   ├── bot-api.ts                 # BotApiWebSocket
+│   │   ├── bot-conversation.ts        # BotConversationWebSocket
+│   │   └── types.ts                   # Enums & interfaces
+│   └── scripts/
+│       ├── hash-password.ts           # CLI สร้าง bcrypt hash
+│       └── seed-users.ts              # CLI เพิ่มผู้ใช้เริ่มต้น
+├── admin-dashboard/                   # React + Vite + Tailwind
+│   └── src/
+│       ├── App.tsx                    # Router (React Router v7)
+│       ├── contexts/AuthContext.tsx    # AuthProvider + useAuth
+│       ├── components/
+│       │   ├── MfaLoginButton.tsx      # ปุ่ม Sign in with Microsoft (MFA)
+│       │   ├── ProtectedRoute.tsx      # Route guard
+│       │   ├── ConfigTab.tsx           # Tab navigation
+│       │   ├── FieldGroup.tsx          # Form field wrapper
+│       │   ├── Toast.tsx               # Toast notification
+│       │   ├── AlertBanner.tsx         # System alert banner
+│       │   ├── ConnectionTestModal.tsx # Modal ผลการทดสอบ connection
+│       │   └── LiveConsoleLog.tsx      # Terminal log viewer
+│       ├── pages/
+│       │   ├── LoginPage.tsx           # Login (password + MFA)
+│       │   ├── PortalPage.tsx          # Landing page
+│       │   ├── ConfigPage.tsx          # 4-tab configuration form
+│       │   ├── MonitorPage.tsx         # KPI + active calls + console
+│       │   ├── DepartmentPage.tsx      # จัดการแผนก
+│       │   ├── UnhandledPage.tsx       # Review unhandled intents
+│       │   └── UsersPage.tsx           # จัดการผู้ใช้
+│       └── hooks/useConfigApi.ts       # Fetch + save + test connections
+├── config.json                         # Runtime config (ไม่ commit ขึ้น git)
+├── config.example.json                 # ตัวอย่าง config สำหรับ dev
+├── users.json                          # ผู้ใช้ระบบ (ไม่ commit ขึ้น git)
+├── users.example.json                  # ตัวอย่าง users
+├── render.yaml                         # Render Blueprint
+└── package.json
+```
 
-See more detailed example in AudioCodes Bot samples [repository](https://github.com/ac-voice-ai/ac-api-samples)
+---
+
+## 🚀 Quick Start (Local Development)
+
+### Prerequisites
+
+- Node.js 24+
+- npm
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/VichyaS/AI-Bot-VoiceTeam.git
+cd AI-Bot-VoiceTeam
+
+# Backend dependencies
+npm install
+
+# Frontend dependencies
+cd admin-dashboard && npm install && cd ..
+```
+
+### 2. Configure
+
+```bash
+# คัดลอก config ตัวอย่าง
+cp config.example.json config.json
+
+# สร้างผู้ใช้เริ่มต้น
+npm run seed-users
+# หรือสร้าง hash password ด้วยตัวเอง
+npm run hash-password -- "your-password"
+```
+
+### 3. Start Development
+
+```bash
+# Terminal 1: Backend (port 8081)
+npm run start:dev
+
+# Terminal 2: Frontend (port 5173)
+cd admin-dashboard && npm run dev
+```
+
+เปิด `http://localhost:5173` ใน browser
+
+---
+
+## 🚢 Deploy ขึ้น Render
+
+### 1. Push ขึ้น GitHub
+
+```bash
+git remote add origin https://github.com/VichyaS/AI-Bot-VoiceTeam.git
+git push -u origin main
+```
+
+### 2. สร้าง Web Service บน Render
+
+- ไปที่ https://dashboard.render.com
+- กด **New → Web Service**
+- เชื่อมต่อ GitHub repo
+- ตั้งค่า:
+
+| Field | ค่า |
+|---|---|
+| **Name** | `ac-bot-api` |
+| **Region** | `Singapore` |
+| **Runtime** | `Node` |
+| **Build Command** | `npm ci && npm run build:all` |
+| **Start Command** | `npm start` |
+
+### 3. Environment Variables
+
+| Variable | คำอธิบาย |
+|---|---|
+| `JWT_SECRET` | กด Generate |
+| `ADMIN_USERNAME` | `superadmin` |
+| `ADMIN_PASSWORD_HASH` | bcrypt hash ของ password |
+| `ADMIN_ROLE` | `SUPER_ADMIN` |
+| `AZURE_TENANT_ID` | Entra ID Tenant ID |
+| `AZURE_CLIENT_ID` | App Registration Client ID |
+| `AZURE_CLIENT_SECRET` | Client Secret |
+| `OPENROUTER_API_KEY` | OpenRouter API Key |
+
+### 4. ตั้งค่า SBC
+
+หลัง Deploy เสร็จ Render จะให้ URL เช่น `https://ac-bot-api.onrender.com`
+
+ตั้งค่า SBC VE 7.40:
+- **Webhook URL:** `https://ac-bot-api.onrender.com/api/audiocodes/webhook`
+- **Admin Dashboard:** `https://ac-bot-api.onrender.com/`
+
+---
+
+## 🔌 API Endpoints
+
+### Webhook (IVR Bot)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/audiocodes/webhook` | ❌ | AudioCodes VoiceAI Connect webhook |
+
+### Admin API (JWT Protected)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/admin/auth/login` | Login ด้วย username/password |
+| `POST` | `/api/admin/auth/mfa-login` | Login ด้วย Microsoft Entra ID MFA |
+| `GET` | `/api/admin/config` | อ่าน config (ซ่อน secret) |
+| `POST` | `/api/admin/config` | อัปเดต config (hot-reload) |
+| `POST` | `/api/admin/test-connection` | ทดสอบ OpenRouter หรือ Azure AD |
+| `GET` | `/api/admin/unhandled` | รายการ unhandled intents |
+| `POST` | `/api/admin/unhandled/:id/resolve` | Mark as resolved |
+| `GET` | `/api/admin/departments` | รายการแผนก |
+| `POST` | `/api/admin/departments` | อัปเดตแผนก |
+| `GET` | `/api/admin/users` | รายการผู้ใช้ |
+| `POST` | `/api/admin/users` | เพิ่มผู้ใช้ |
+| `PUT` | `/api/admin/users/:username` | แก้ไขผู้ใช้ |
+| `DELETE` | `/api/admin/users/:username` | ลบผู้ใช้ |
+| `WS` | `/api/admin/ws/logs?token=<JWT>` | Real-time log stream |
+
+---
+
+## 🔄 Call Flow
+
+```mermaid
+sequenceDiagram
+    participant Caller as ผู้โทร
+    participant SBC as SBC VE 7.40
+    participant VAIC as VoiceAI Connect
+    participant Bot as Bot API
+    participant AI as OpenRouter AI
+    participant Entra as Microsoft Entra ID
+
+    Caller->>SBC: โทรเข้า
+    SBC->>VAIC: ส่งสาย
+    VAIC->>Bot: Webhook (sessionStart)
+    Bot-->>VAIC: TTS "สวัสดีค่ะ ต้องการติดต่อใครคะ?"
+    VAIC-->>Caller: เล่นเสียง
+    Caller->>VAIC: "ขอสายคุณสมชายครับ"
+    VAIC->>Bot: Webhook (activities)
+    Bot->>AI: extractThaiName()
+    AI-->>Bot: {"target_type":"user","extracted_value":"สมชาย"}
+    Bot->>Entra: findTeamsUserByThaiName()
+    Entra-->>Bot: somchai@company.com
+    Bot-->>VAIC: Transfer SIP URI
+    VAIC->>SBC: โอนสาย
+    SBC->>Microsoft Teams: สายถึงคุณสมชาย
+```
+
+---
+
+## ⚙️ Runtime Configuration
+
+ค่าต่างๆ อยู่ใน `config.json` และสามารถแก้ไขผ่าน Admin Dashboard ได้ทันที **ไม่ต้อง Restart Server**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `webhookSecret` | `""` | Webhook secret |
+| `welcomeMessage` | `"สวัสดีค่ะ..."` | TTS เมื่อเริ่มสาย |
+| `fallbackMessage` | `"ขออภัยค่ะ..."` | TTS เมื่อไม่พบชื่อ |
+| `fallbackDestination` | `sip:operator-queue@...` | ปลายทางเมื่อโอนไม่สำเร็จ |
+| `maxRetries` | `3` | จำนวนครั้งที่ให้พูดใหม่ |
+| `openRouterApiKey` | `""` | OpenRouter API Key |
+| `aiModelId` | `openai/gpt-5.6-luna` | AI Model |
+| `temperature` | `0` | Temperature (0 = deterministic) |
+| `maxTokens` | `150` | Max tokens ต่อ response |
+| `tenantId` | `""` | Entra ID Tenant ID |
+| `clientId` | `""` | Entra ID App Client ID |
+| `clientSecret` | `""` | Entra ID Client Secret |
+| `mfaEnabled` | `false` | เปิด/ปิด MFA Login |
+| `mfaAllowedDomain` | `""` | จำกัดโดเมนอีเมลที่ MFA Login ได้ |
+| `sipDomain` | `sip:company.com` | SIP Domain |
+| `sbcPort` | `5061` | SBC SIP Port |
+| `transferProtocol` | `TLS` | TLS/TCP/UDP |
+| `routingMode` | `Blind Transfer` | Blind หรือ Consultative |
+| `transferTimeout` | `15` | Timeout (วินาที) |
+| `operatorFallbackSip` | `sip:operator-queue@...` | SIP เจ้าหน้าที่ศูนย์กลาง |
+
+---
+
+## 🖥️ Admin Dashboard Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/login` | Login | เข้าสู่ระบบ (Password หรือ MFA) |
+| `/portal` | Portal | หน้าแรก |
+| `/admin/config` | Config | ตั้งค่า AudioCodes, OpenRouter, Entra ID, SIP |
+| `/admin/monitor` | Monitor | สถิติ, สายที่กำลังใช้งาน, Console Log |
+| `/admin/departments` | Departments | จัดการแผนกและ SIP URI |
+| `/admin/unhandled` | Unhandled | ตรวจสอบคำพูดที่ AI แยกไม่ออก |
+| `/admin/users` | Users | จัดการผู้ใช้ระบบ |
+
+---
+
+## 🛠️ NPM Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run build` | Build TypeScript |
+| `npm run build:dashboard` | Build React dashboard |
+| `npm run build:all` | Build ทั้ง backend + dashboard |
+| `npm start` | Start production server |
+| `npm run start:dev` | Start dev server (tsx) |
+| `npm run hash-password` | สร้าง bcrypt hash |
+| `npm run seed-users` | เพิ่มผู้ใช้เริ่มต้น |
+
+---
+
+## 🧪 Testing Webhook
+
+```bash
+# Session start
+curl -X POST http://localhost:8081/api/audiocodes/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"event":"sessionStart","caller":"0999999999"}'
+
+# User speech
+curl -X POST http://localhost:8081/api/audiocodes/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"type":"activities","activities":[{"type":"message","text":"ขอสายคุณสมชายหน่อยครับ"}]}'
+
+# Hangup
+curl -X POST http://localhost:8081/api/audiocodes/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"type":"activities","activities":[{"type":"event","name":"hangup"}]}'
+```
+
+---
+
+## 🔒 Security
+
+- ✅ API keys และ secrets ถูกเก็บใน `config.json` ซึ่งอยู่ใน `.gitignore`
+- ✅ JWT tokens มีอายุ 2 ชั่วโมง
+- ✅ Rate limiting ทุก endpoint
+- ✅ Input validation ด้วย Zod
+- ✅ Helmet security headers
+- ✅ Secrets ถูก mask เมื่ออ่านผ่าน API
+- ✅ MFA Login รองรับ Microsoft Entra ID
+- ✅ ใช้ `config.example.json` เป็น template แทนการ commit ค่าจริง
+
+---
+
+## 📄 License
+
+ISC License — Copyright (c) 2025-2026 AudioCodes Ltd.

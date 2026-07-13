@@ -1,2 +1,8 @@
 /dist/
 /node_modules/
+/admin-dashboard/dist/
+/config.json
+/users.json
+/unhandled_logs.json
+.env
+.env.local
