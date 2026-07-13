@@ -164,16 +164,21 @@ git push -u origin main
 
 ### 3. Environment Variables
 
-| Variable | คำอธิบาย |
-|---|---|
-| `JWT_SECRET` | กด Generate |
-| `ADMIN_USERNAME` | `superadmin` |
-| `ADMIN_PASSWORD_HASH` | bcrypt hash ของ password |
-| `ADMIN_ROLE` | `SUPER_ADMIN` |
-| `AZURE_TENANT_ID` | Entra ID Tenant ID |
-| `AZURE_CLIENT_ID` | App Registration Client ID |
-| `AZURE_CLIENT_SECRET` | Client Secret |
-| `OPENROUTER_API_KEY` | OpenRouter API Key |
+| Variable | จำเป็น | คำอธิบาย |
+|---|---|---|
+| `JWT_SECRET` | ✅ | Generate ค่าสุ่ม |
+| `ADMIN_USERNAME` | ✅ | `superadmin` |
+| `ADMIN_PASSWORD_HASH` | ✅ | bcrypt hash ของ password |
+| `ADMIN_ROLE` | ✅ | `SUPER_ADMIN` |
+| `AZURE_TENANT_ID` | ⚠️ | Entra ID Tenant ID |
+| `AZURE_CLIENT_ID` | ⚠️ | App Registration Client ID |
+| `AZURE_CLIENT_SECRET` | ⚠️ | Client Secret |
+| `OPENROUTER_API_KEY` | ⚠️ | OpenRouter API Key |
+| `CONFIG_JSON` | ⚠️ | 🆕 JSON string ของ config ทั้งหมด (แก้อาการ Render Cold Start) |
+
+> **⚠️ Render Cold Start:** Render จะพัก Server ถ้าไม่มีเรียกใช้ 15 นาที (Spin Down) และ **ไฟล์ `config.json` จะหาย** ทุกครั้งที่ตื่นขึ้นมาใหม่
+>
+> วิธีแก้: เปิด `https://ai-bot-voiceteam.onrender.com/api/admin/config/export` (ต้อง Login ก่อน) → copy JSON output → นำไปใส่ใน Environment Variable `CONFIG_JSON` บน Render Dashboard
 
 ### 4. ตั้งค่า SBC
 
