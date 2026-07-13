@@ -17,6 +17,8 @@ import { getDepartmentSipUri } from './department-lookup.js';
 import { generateTransferResponse } from './transfer.js';
 import { generateTransferFallbackResponse } from './transfer-fallback.js';
 import { getConfig } from './config-manager.js';
+import { BotApiWebSocket } from './websocket/bot-api.js';
+import type { BotConversationWebSocket } from './websocket/bot-conversation.js';
 import adminRouter from './admin-router.js';
 import authRouter from './auth-router.js';
 import unhandledRouter from './unhandled-router.js';
@@ -72,6 +74,36 @@ const httpServer = createServer(app);
 
 // Attach WebSocket server (noServer mode using HTTP upgrade)
 createLogWebSocketServer(httpServer);
+
+// ── AudioCodes Bot API WebSocket Server ────────────────────────────
+// This is the WebSocket endpoint that SBC VoiceAI Connect connects to
+// using the URL configured in Voice.AI Connectors.
+const botWsPath = '/api/audiocodes/bot-ws';
+const botApi = new BotApiWebSocket();
+botApi.listen({
+  server: httpServer,
+  path: botWsPath,
+});
+console.log(`[webhook] Bot WebSocket endpoint: ws://localhost:${PORT}${botWsPath}`);
+
+// Handle incoming conversations from VoiceAI Connect
+botApi.on('conversation', (conversation: BotConversationWebSocket, info: { request: import('http').IncomingMessage; initiateMessage: import('./websocket/types.js').ProtocolMessage }) => {
+  const convId = info.initiateMessage.conversationId || 'unknown';
+  console.log(`[bot-ws] New conversation started: ${convId}`);
+  emitCallEvent('call-started', convId, info.initiateMessage.caller || 'unknown');
+
+  // Handle activities from VoiceAI (transcribed speech, events)
+  conversation.on('activity', (activity: import('./websocket/types.js').BotActivity) => {
+    console.log(`[bot-ws] Activity received:`, activity);
+    // Process the activity similar to webhook handler
+    // For now, log it — the webhook handler is the primary processing path
+  });
+
+  conversation.on('end', () => {
+    console.log(`[bot-ws] Conversation ended: ${convId}`);
+    emitCallEvent('call-ended', convId, 'unknown');
+  });
+});
 
 // Middleware to parse JSON bodies (limit size to prevent JSON injection)
 app.use(express.json({ limit: '16kb' }));
