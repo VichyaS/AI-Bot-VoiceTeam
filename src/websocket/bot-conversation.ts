@@ -10,8 +10,9 @@ import {
   ProtocolMessage,
   VaicToBotMessageName,
 } from './types.js';
-import { EventEmitter2, type Listener } from 'eventemitter2';
 import { PassThrough, Readable } from 'stream';
+import ee2 from 'eventemitter2';
+const { EventEmitter2 } = ee2;
 
 const log = debug('ac-bot-api');
 
@@ -25,13 +26,13 @@ function redactMessage(message: ProtocolMessage) {
 }
 
 declare interface BotConversationEvents {
-  on(event: 'conversation.start', listener: (message: ProtocolMessage) => Promise<void>): this | Listener;
-  on(event: 'userStream', listener: (stream: PassThrough, options: { message: ProtocolMessage; }) => void): this | Listener;
-  on(event: 'activity', listener: (activity: BotActivity) => void): this | Listener;
-  on(event: 'end', listener: (message?: ProtocolMessage) => void): this | Listener;
-  on(event: 'error', listener: (error: Error) => void): this | Listener;
+  on(event: 'conversation.start', listener: (message: ProtocolMessage) => Promise<void>): this;
+  on(event: 'userStream', listener: (stream: PassThrough, options: { message: ProtocolMessage; }) => void): this;
+  on(event: 'activity', listener: (activity: BotActivity) => void): this;
+  on(event: 'end', listener: (message?: ProtocolMessage) => void): this;
+  on(event: 'error', listener: (error: Error) => void): this;
 }
-export class BotConversationWebSocket extends EventEmitter2 implements BotConversationEvents {
+export class BotConversationWebSocket extends EventEmitter2 {
   private ended = false;
   private conversationId = '';
   private mediaFormat = MediaFormat.RAW_LINEAR_16;
