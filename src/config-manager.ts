@@ -32,6 +32,19 @@ function loadFromDisk(): AppConfig {
   } catch (err) {
     console.warn('[config] Failed to read config.json, using defaults:', err);
   }
+
+  // ── Fallback: load from CONFIG_JSON env var (Render cold-start workaround) ──
+  const envConfig = process.env.CONFIG_JSON;
+  if (envConfig) {
+    try {
+      const parsed = JSON.parse(envConfig);
+      console.log('[config] Loaded configuration from CONFIG_JSON environment variable');
+      return { ...DEFAULT_CONFIG, ...parsed };
+    } catch (err) {
+      console.warn('[config] Failed to parse CONFIG_JSON env var, using defaults:', err);
+    }
+  }
+
   return { ...DEFAULT_CONFIG };
 }
 

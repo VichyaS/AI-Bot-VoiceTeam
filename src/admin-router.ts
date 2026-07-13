@@ -54,6 +54,17 @@ router.post('/config', (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/admin/config/export
+ *
+ * Returns the full raw config (no masking) for use in Render CONFIG_JSON env var.
+ * Render's filesystem is ephemeral — config.json disappears on cold start.
+ * Copy the output of this endpoint into the CONFIG_JSON env var on Render Dashboard.
+ */
+router.get('/config/export', (_req: Request, res: Response) => {
+  res.json(getConfig());
+});
+
+/**
  * POST /api/admin/test-connection
  *
  * Tests connectivity to an external service using the current live config.

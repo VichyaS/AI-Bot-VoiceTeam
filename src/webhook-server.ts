@@ -63,6 +63,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 8081;
 
+// ── Healthcheck endpoint (prevents Render spin-down) ────────────────
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // ── Serve built admin dashboard (production) ────────────────────────
 const dashboardDist = path.resolve(__dirname, '..', 'admin-dashboard', 'dist');
 if (fs.existsSync(dashboardDist)) {
