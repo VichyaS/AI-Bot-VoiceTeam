@@ -67,7 +67,6 @@
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
-    "tsx": "^4.23.0",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   }
