@@ -16,13 +16,13 @@ export interface UseConfigApiReturn {
   errors: ValidationErrors;
   loading: boolean;
   saving: boolean;
-  testing: 'idle' | 'openrouter' | 'azure';
+  testing: 'idle' | 'openrouter' | 'azure' | 'audiocodes' | 'sip';
   toast: Toast | null;
   dismissToast: () => void;
   handleSave: () => Promise<void>;
-  handleTestConnection: (serviceType: 'openrouter' | 'azure') => Promise<void>;
+  handleTestConnection: (serviceType: 'openrouter' | 'azure' | 'audiocodes' | 'sip') => Promise<void>;
   /** Returns the full debug result for the modal — does NOT set toast/testing state */
-  runTestConnection: (serviceType: 'openrouter' | 'azure') => Promise<{
+  runTestConnection: (serviceType: 'openrouter' | 'azure' | 'audiocodes' | 'sip') => Promise<{
     success: boolean;
     service: string;
     message?: string;
@@ -46,7 +46,7 @@ export function useConfigApi(): UseConfigApiReturn {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState<'idle' | 'openrouter' | 'azure'>('idle');
+  const [testing, setTesting] = useState<'idle' | 'openrouter' | 'azure' | 'audiocodes' | 'sip'>('idle');
   const [toast, setToast] = useState<Toast | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const { token } = useAuth();
@@ -167,7 +167,7 @@ export function useConfigApi(): UseConfigApiReturn {
 
   /* ── 3. Test connection (simple toast) ──────────────────────────── */
   const handleTestConnection = useCallback(
-    async (serviceType: 'openrouter' | 'azure') => {
+    async (serviceType: 'openrouter' | 'azure' | 'audiocodes' | 'sip') => {
       if (serviceType === 'openrouter' && !form.openRouterApiKey.trim()) {
         showToast('Enter an OpenRouter API key first.', 'error');
         return;
@@ -191,20 +191,22 @@ export function useConfigApi(): UseConfigApiReturn {
           throw new Error(data.error || `HTTP ${res.status}`);
         }
 
-        showToast(
-          serviceType === 'openrouter'
-            ? 'OpenRouter connection successful!'
-            : 'Azure AD connection successful!',
-          'success',
-        );
+        const messages: Record<string, string> = {
+          openrouter: 'OpenRouter connection successful!',
+          azure: 'Azure AD connection successful!',
+          audiocodes: 'AudioCodes VoiceAI webhook responded successfully!',
+          sip: 'Call routing pipeline executed successfully!',
+        };
+        showToast(messages[serviceType] || 'Test successful!', 'success');
       } catch (err) {
         console.error('[useConfigApi] Test connection failed:', err);
-        showToast(
-          serviceType === 'openrouter'
-            ? `OpenRouter failed: ${(err as Error).message}`
-            : `Azure AD failed: ${(err as Error).message}`,
-          'error',
-        );
+        const errorMessages: Record<string, string> = {
+          openrouter: `OpenRouter failed: ${(err as Error).message}`,
+          azure: `Azure AD failed: ${(err as Error).message}`,
+          audiocodes: `VoiceAI test failed: ${(err as Error).message}`,
+          sip: `Routing test failed: ${(err as Error).message}`,
+        };
+        showToast(errorMessages[serviceType] || `Test failed: ${(err as Error).message}`, 'error');
       } finally {
         if (mountedRef.current) setTesting('idle');
       }
@@ -214,7 +216,7 @@ export function useConfigApi(): UseConfigApiReturn {
 
   /* ── 4. Test connection (detailed debug — for modal) ───────────── */
   const runTestConnection = useCallback(
-    async (serviceType: 'openrouter' | 'azure') => {
+    async (serviceType: 'openrouter' | 'azure' | 'audiocodes' | 'sip') => {
       const res = await fetch(`${apiBase()}/api/admin/test-connection`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),

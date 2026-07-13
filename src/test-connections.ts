@@ -143,3 +143,133 @@ export async function testAzureAdConnection(
     return { success: false, debugLogs, errorMessage };
   }
 }
+
+/* ── 3. AudioCodes VoiceAI ────────────────────────────────────────── */
+
+/**
+ * Tests the AudioCodes VoiceAI webhook endpoint by simulating a sessionStart
+ * event. This validates that the webhook server is reachable and responding
+ * correctly.
+ */
+export async function testAudioCodesVoiceAI(
+  webhookUrl: string,
+): Promise<ConnectionTestResult> {
+  const debugLogs: string[] = [];
+
+  if (!webhookUrl.trim()) {
+    debugLogs.push('❌ Pre-check: Webhook URL is empty — aborting.');
+    return { success: false, debugLogs, errorMessage: 'Webhook URL is empty.' };
+  }
+
+  debugLogs.push(`🔧 Step 1: Testing webhook reachability at ${webhookUrl}...`);
+  debugLogs.push('📤 Step 2: Sending sessionStart event...');
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'sessionStart',
+        caller: '0999999999',
+        conversationId: 'test-' + Date.now(),
+      }),
+    });
+
+    debugLogs.push(`📡 Step 3: Server responded with HTTP status ${response.status} ${response.statusText}`);
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      const errorMessage = `Webhook returned HTTP ${response.status}${body ? ` — ${body.slice(0, 200)}` : ''}`;
+      debugLogs.push(`❌ Step 4: ${errorMessage}`);
+      return { success: false, debugLogs, errorMessage };
+    }
+
+    const data = await response.json() as { activities?: unknown[] };
+    const hasActivities = Array.isArray(data.activities) && data.activities.length > 0;
+
+    debugLogs.push(`✅ Step 4: Webhook responded successfully.`);
+    debugLogs.push(`   ● Response contains activities: ${hasActivities ? 'Yes' : 'No'}`);
+    debugLogs.push(`   ● Activities count: ${data.activities?.length ?? 0}`);
+
+    if (hasActivities) {
+      debugLogs.push('   ✅ Welcome TTS prompt is ready to be played.');
+    }
+
+    return { success: true, debugLogs, errorMessage: null };
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    const errorMessage = `Network error: ${msg}`;
+    debugLogs.push(`💥 Step 4: ${errorMessage}`);
+    return { success: false, debugLogs, errorMessage };
+  }
+}
+
+/* ── 4. Call Routing & SIP ─────────────────────────────────────────── */
+
+/**
+ * Tests the call routing logic by simulating a user speech event and
+ * verifying the AI extraction + routing pipeline works end-to-end.
+ * This tests the internal webhook endpoint locally.
+ */
+export async function testCallRoutingSip(
+  webhookUrl: string,
+  testSpeech: string,
+): Promise<ConnectionTestResult> {
+  const debugLogs: string[] = [];
+
+  if (!webhookUrl.trim()) {
+    debugLogs.push('❌ Pre-check: Webhook URL is empty — aborting.');
+    return { success: false, debugLogs, errorMessage: 'Webhook URL is empty.' };
+  }
+
+  debugLogs.push(`🔧 Step 1: Testing call routing pipeline at ${webhookUrl}...`);
+  debugLogs.push(`📤 Step 2: Sending test speech: "${testSpeech}"...`);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'activities',
+        conversationId: 'test-' + Date.now(),
+        caller: '0999999999',
+        activities: [
+          {
+            type: 'message',
+            text: testSpeech,
+          },
+        ],
+      }),
+    });
+
+    debugLogs.push(`📡 Step 3: Server responded with HTTP status ${response.status} ${response.statusText}`);
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      const errorMessage = `Webhook returned HTTP ${response.status}${body ? ` — ${body.slice(0, 200)}` : ''}`;
+      debugLogs.push(`❌ Step 4: ${errorMessage}`);
+      return { success: false, debugLogs, errorMessage };
+    }
+
+    const data = await response.json() as { activities?: { type?: string; text?: string; name?: string }[] };
+
+    debugLogs.push(`✅ Step 4: Routing pipeline executed successfully.`);
+
+    if (Array.isArray(data.activities)) {
+      for (const activity of data.activities) {
+        if (activity.type === 'message' && activity.text) {
+          debugLogs.push(`   ● TTS Response: "${activity.text.slice(0, 100)}"`);
+        } else if (activity.type === 'event' && activity.name === 'transfer') {
+          debugLogs.push(`   🔄 Transfer initiated!`);
+        }
+      }
+    }
+
+    return { success: true, debugLogs, errorMessage: null };
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    const errorMessage = `Network error: ${msg}`;
+    debugLogs.push(`💥 Step 4: ${errorMessage}`);
+    return { success: false, debugLogs, errorMessage };
+  }
+}

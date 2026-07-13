@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getConfig, updateConfig } from './config-manager.js';
 import { maskSecrets } from './config-types.js';
-import { testOpenRouterConnection, testAzureAdConnection } from './test-connections.js';
+import { testOpenRouterConnection, testAzureAdConnection, testAudioCodesVoiceAI, testCallRoutingSip } from './test-connections.js';
 import { authenticateAdmin, authorizeRoles } from './auth-jwt.js';
 
 const router = Router();
@@ -57,13 +57,13 @@ router.post('/config', (req: Request, res: Response) => {
  * POST /api/admin/test-connection
  *
  * Tests connectivity to an external service using the current live config.
- * Expects: { service: 'openrouter' | 'azure' }
+ * Expects: { service: 'openrouter' | 'azure' | 'audiocodes' | 'sip' }
  */
 router.post('/test-connection', async (req: Request, res: Response) => {
   const { service } = req.body as { service?: string };
 
-  if (!service || !['openrouter', 'azure'].includes(service)) {
-    return res.status(400).json({ error: 'Provide a valid service: "openrouter" or "azure".' });
+  if (!service || !['openrouter', 'azure', 'audiocodes', 'sip'].includes(service)) {
+    return res.status(400).json({ error: 'Provide a valid service: "openrouter", "azure", "audiocodes", or "sip".' });
   }
 
   const cfg = getConfig();
@@ -73,9 +73,17 @@ router.post('/test-connection', async (req: Request, res: Response) => {
   if (service === 'openrouter') {
     console.log('[admin] Testing OpenRouter connection…');
     result = await testOpenRouterConnection(cfg.openRouterApiKey, cfg.aiModelId);
-  } else {
+  } else if (service === 'azure') {
     console.log('[admin] Testing Azure AD connection…');
     result = await testAzureAdConnection(cfg.tenantId, cfg.clientId, cfg.clientSecret);
+  } else if (service === 'audiocodes') {
+    console.log('[admin] Testing AudioCodes VoiceAI connection…');
+    const webhookUrl = cfg.webhookPublicUrl || `http://localhost:${process.env.PORT || 8081}/api/audiocodes/webhook`;
+    result = await testAudioCodesVoiceAI(webhookUrl);
+  } else {
+    console.log('[admin] Testing Call Routing & SIP…');
+    const webhookUrl = cfg.webhookPublicUrl || `http://localhost:${process.env.PORT || 8081}/api/audiocodes/webhook`;
+    result = await testCallRoutingSip(webhookUrl, 'ขอสายคุณสมชายหน่อยครับ');
   }
 
   res.json({
@@ -84,7 +92,11 @@ router.post('/test-connection', async (req: Request, res: Response) => {
     message: result.success
       ? (service === 'openrouter'
           ? 'OpenRouter connection verified successfully.'
-          : 'Azure AD connection verified successfully.')
+          : service === 'azure'
+            ? 'Azure AD connection verified successfully.'
+            : service === 'audiocodes'
+              ? 'AudioCodes VoiceAI webhook responded successfully.'
+              : 'Call routing pipeline executed successfully.')
       : undefined,
     debugLogs: result.debugLogs,
     errorMessage: result.errorMessage,

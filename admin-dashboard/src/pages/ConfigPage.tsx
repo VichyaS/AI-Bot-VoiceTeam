@@ -23,6 +23,12 @@ const AzureIcon = () => (
 const SipIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 16c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2h12c1.1 0 2 .9 2 2v8Z" /><path d="M8 12h8" /><path d="M10 9l2 3 2-3" /></svg>
 );
+const AudioIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+);
+const RouteIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" /><circle cx="12" cy="10" r="3" /></svg>
+);
 const CheckIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
 );
@@ -95,7 +101,7 @@ export default function ConfigPage() {
   } = useConfigApi();
 
   const [activeTab, setActiveTab] = useState(0);
-  const [testModal, setTestModal] = useState<{ open: true; service: 'openrouter' | 'azure' } | { open: false }>({ open: false });
+  const [testModal, setTestModal] = useState<{ open: true; service: 'openrouter' | 'azure' | 'audiocodes' | 'sip' } | { open: false }>({ open: false });
 
   const tabs = [
     { icon: <MicIcon />, title: 'AudioCodes VoiceAI', description: 'Webhook secret, welcome & fallback prompts' },
@@ -158,6 +164,9 @@ export default function ConfigPage() {
               <SectionPanel title="AudioCodes VoiceAI Connect Settings">
                 <FieldGroup label="Webhook Secret Token" hint="Used to verify incoming webhook requests" error={errors.webhookSecret}>
                   <TextInput type="password" value={form.webhookSecret} onChange={(v) => patch({ webhookSecret: v })} placeholder="Enter your webhook secret" error={errors.webhookSecret} />
+                </FieldGroup>
+                <FieldGroup label="Webhook Public URL" hint="Public URL for AudioCodes VoiceAI to send webhooks to (e.g. https://your-app.onrender.com/api/audiocodes/webhook)">
+                  <TextInput value={form.webhookPublicUrl} onChange={(v) => patch({ webhookPublicUrl: v })} placeholder="https://your-app.onrender.com/api/audiocodes/webhook" />
                 </FieldGroup>
                 <FieldGroup label="Default Welcome Message" hint="Played to the caller when a new session starts" error={errors.welcomeMessage}>
                   <TextInput value={form.welcomeMessage} onChange={(v) => patch({ welcomeMessage: v })} placeholder="สวัสดีค่ะ ต้องการติดต่อใครคะ?" error={errors.welcomeMessage} />
@@ -310,6 +319,16 @@ export default function ConfigPage() {
                 className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-5 py-2.5 text-sm font-semibold text-sky-700 shadow-sm hover:bg-sky-100 disabled:opacity-60">
                 {testing === 'azure' ? <LoaderIcon /> : <AzureIcon />}
                 {testing === 'azure' ? 'Testing…' : 'Test Azure AD'}
+              </button>
+              <button type="button" onClick={() => setTestModal({ open: true, service: 'audiocodes' })} disabled={testing !== 'idle'}
+                className="inline-flex items-center gap-2 rounded-lg border border-teal-300 bg-teal-50 px-5 py-2.5 text-sm font-semibold text-teal-700 shadow-sm hover:bg-teal-100 disabled:opacity-60">
+                {testing === 'audiocodes' ? <LoaderIcon /> : <AudioIcon />}
+                {testing === 'audiocodes' ? 'Testing…' : 'Test VoiceAI'}
+              </button>
+              <button type="button" onClick={() => setTestModal({ open: true, service: 'sip' })} disabled={testing !== 'idle'}
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-5 py-2.5 text-sm font-semibold text-violet-700 shadow-sm hover:bg-violet-100 disabled:opacity-60">
+                {testing === 'sip' ? <LoaderIcon /> : <RouteIcon />}
+                {testing === 'sip' ? 'Testing…' : 'Test Routing & SIP'}
               </button>
             </div>
 

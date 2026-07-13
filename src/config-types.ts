@@ -28,6 +28,8 @@ export interface AppConfig {
   mfaEnabled: boolean;
   /** Allowed email domain for MFA login (e.g. company.com) */
   mfaAllowedDomain: string;
+  /** Public URL for the webhook (for VoiceAI connection test) */
+  webhookPublicUrl: string;
   sipDomain: string;
   /** SBC signaling port (default 5061) */
   sbcPort: number;
@@ -63,6 +65,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   searchScope: '',
   mfaEnabled: false,
   mfaAllowedDomain: '',
+  webhookPublicUrl: '',
   sipDomain: 'sip:company.com',
   sbcPort: 5061,
   transferProtocol: 'TLS',

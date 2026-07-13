@@ -12,9 +12,9 @@ export interface DebugResult {
 
 interface Props {
   open: boolean;
-  service: 'openrouter' | 'azure' | null;
+  service: 'openrouter' | 'azure' | 'audiocodes' | 'sip' | null;
   onClose: () => void;
-  onRunTest: (service: 'openrouter' | 'azure') => Promise<DebugResult>;
+  onRunTest: (service: 'openrouter' | 'azure' | 'audiocodes' | 'sip') => Promise<DebugResult>;
 }
 
 const LoaderIcon = () => (
@@ -43,7 +43,11 @@ export default function ConnectionTestModal({ open, service, onClose, onRunTest 
 
   if (!open) return null;
 
-  const serviceLabel = service === 'openrouter' ? 'OpenRouter' : 'Azure AD';
+  const serviceLabel =
+    service === 'openrouter' ? 'OpenRouter' :
+    service === 'azure' ? 'Azure AD' :
+    service === 'audiocodes' ? 'AudioCodes VoiceAI' :
+    'Call Routing & SIP';
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>

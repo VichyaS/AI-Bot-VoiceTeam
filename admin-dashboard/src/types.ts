@@ -22,6 +22,7 @@ export interface ConfigFormState {
   searchScope: string;
   mfaEnabled: boolean;
   mfaAllowedDomain: string;
+  webhookPublicUrl: string;
 
   // SIP / Routing
   sipDomain: string;
@@ -59,6 +60,7 @@ export const DEFAULTS: ConfigFormState = {
   searchScope: '',
   mfaEnabled: false,
   mfaAllowedDomain: '',
+  webhookPublicUrl: '',
   sipDomain: 'sip:company.com',
   sbcPort: 5061,
   transferProtocol: 'TLS',

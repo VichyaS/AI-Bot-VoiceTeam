@@ -17,6 +17,7 @@
   "searchScope": "",
   "mfaEnabled": false,
   "mfaAllowedDomain": "",
+  "webhookPublicUrl": "",
   "sipDomain": "sip:company.com",
   "sbcPort": 5061,
   "transferProtocol": "TLS",

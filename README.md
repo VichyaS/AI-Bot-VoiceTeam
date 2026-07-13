@@ -201,7 +201,7 @@ git push -u origin main
 | `POST` | `/api/admin/auth/mfa-login` | Login ด้วย Microsoft Entra ID MFA |
 | `GET` | `/api/admin/config` | อ่าน config (ซ่อน secret) |
 | `POST` | `/api/admin/config` | อัปเดต config (hot-reload) |
-| `POST` | `/api/admin/test-connection` | ทดสอบ OpenRouter หรือ Azure AD |
+| `POST` | `/api/admin/test-connection` | ทดสอบ OpenRouter, Azure AD, AudioCodes VoiceAI, หรือ SIP Routing |
 | `GET` | `/api/admin/unhandled` | รายการ unhandled intents |
 | `POST` | `/api/admin/unhandled/:id/resolve` | Mark as resolved |
 | `GET` | `/api/admin/departments` | รายการแผนก |
@@ -263,6 +263,7 @@ sequenceDiagram
 | `clientSecret` | `""` | Entra ID Client Secret |
 | `mfaEnabled` | `false` | เปิด/ปิด MFA Login |
 | `mfaAllowedDomain` | `""` | จำกัดโดเมนอีเมลที่ MFA Login ได้ |
+| `webhookPublicUrl` | `""` | Public URL สำหรับทดสอบ AudioCodes VoiceAI |
 | `sipDomain` | `sip:company.com` | SIP Domain |
 | `sbcPort` | `5061` | SBC SIP Port |
 | `transferProtocol` | `TLS` | TLS/TCP/UDP |
