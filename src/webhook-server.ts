@@ -384,8 +384,6 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
   }
 });
 
-});
-
 // ── SPA fallback: serve index.html for all non-API routes ───────────
 app.use((req: Request, res: Response) => {
   if (req.path.startsWith('/api/')) {
