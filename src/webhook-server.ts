@@ -32,6 +32,15 @@ import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 
+// ── Global startup error handler ────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] Uncaught exception during startup:', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[fatal] Unhandled rejection during startup:', err);
+});
+
 // ── Start-up checks ────────────────────────────────────────────────
 function checkSecretExpiry() {
   const cfg = getConfig();
