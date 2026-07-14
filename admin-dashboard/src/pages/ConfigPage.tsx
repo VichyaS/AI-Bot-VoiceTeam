@@ -240,6 +240,17 @@ export default function ConfigPage() {
                 <FieldGroup label="Search Scope Base DN / Domain Filter (Optional)" hint="กรองเฉพาะผู้ใช้ในโดเมนหรือกลุ่มที่ระบุ เพื่อป้องกันไม่ให้บอทค้นหาเจอ User ภายนอกหรือบัญชีระบบ (Service Accounts)">
                   <TextInput value={form.searchScope} onChange={(v) => patch({ searchScope: v })} placeholder="e.g., @yourcompany.com or ou=Staff" />
                 </FieldGroup>
+                {/* Azure Speech Services ASR */}
+                <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-4 py-3 space-y-3">
+                  <p className="text-xs font-semibold text-indigo-700 mb-2">Azure Speech Services (ASR)</p>
+                  <p className="text-[11px] text-indigo-600 mb-2">ใช้สำหรับแปลงเสียงพูดเป็นข้อความ (Speech-to-Text) จาก SBC VoiceAI. สร้าง Resource ที่ Azure Portal → Speech Services → กด Keys and Endpoint</p>
+                  <FieldGroup label="Speech Key" hint="Azure Speech Service Key (subscription key)">
+                    <TextInput type="password" value={form.speechKey} onChange={(v) => patch({ speechKey: v })} placeholder="Enter your Azure Speech key" />
+                  </FieldGroup>
+                  <FieldGroup label="Speech Region" hint="Region ของ Speech Resource (e.g. southeastasia)">
+                    <TextInput value={form.speechRegion} onChange={(v) => patch({ speechRegion: v })} placeholder="e.g., southeastasia" />
+                  </FieldGroup>
+                </div>
                 {/* MFA Login Settings */}
                 <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-4 py-3 space-y-3">
                   <p className="text-xs font-semibold text-blue-700 mb-2">MFA Login Settings (Sign in with Microsoft)</p>
