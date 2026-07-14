@@ -110,11 +110,7 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
         console.log(`[bot-ws] Session started: ${sessionId}, caller: ${caller}`);
         emitCallEvent('call-started', sessionId, caller);
 
-        // Respond to VoiceAI that session is accepted
-        ws.send(JSON.stringify({
-          message: 'sessionStarted',
-          sessionID: sessionId,
-        }));
+        // NOTE: Do NOT reply to Start — SBC VoiceAI doesn't expect a response for it
 
         // Also send webhook to process session start
         fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
@@ -129,7 +125,7 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
       }
 
       if (msg.message === 'KeepAlive') {
-        // Respond to keep-alive
+        // Respond to keep-alive — SBC expects this reply
         ws.send(JSON.stringify({ message: 'KeepAlive', sessionID: msg.sessionID }));
       }
 
