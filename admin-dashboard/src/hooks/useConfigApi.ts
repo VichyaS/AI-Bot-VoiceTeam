@@ -154,7 +154,7 @@ export function useConfigApi(): UseConfigApiReturn {
 
       // Show the verification success message from the backend
       if (data.message) {
-        setSuccessBanner(data.message);
+        setSuccessBanner(data.message + ' ⚠️ ถ้าใช้ Render: อย่าลืมอัปเดต Environment Variables (CONFIG_*) ด้วย');
       }
       showToast('Settings saved successfully.', 'success');
     } catch (err) {

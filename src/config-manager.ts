@@ -16,36 +16,39 @@ let _config: AppConfig = { ...DEFAULT_CONFIG };
 
 /** Load config from disk into memory. Falls back to defaults silently. */
 function loadFromDisk(): AppConfig {
+  // ── 1. Start with defaults ──────────────────────────────────────────
+  let config: AppConfig = { ...DEFAULT_CONFIG };
+
+  // ── 2. Load from config.json if exists ──────────────────────────────
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
       try {
         const parsed = JSON.parse(raw);
+        config = { ...config, ...parsed };
         console.log('[config] Loaded configuration from', CONFIG_PATH);
-        return { ...DEFAULT_CONFIG, ...parsed };
       } catch (parseErr) {
         console.error('[config] Corrupt JSON in config.json:', parseErr);
         broadcastSystemAlert('CRITICAL', 'config.json is corrupted or contains invalid JSON. Using defaults.');
-        return { ...DEFAULT_CONFIG };
       }
     }
   } catch (err) {
     console.warn('[config] Failed to read config.json, using defaults:', err);
   }
 
-  // ── Fallback: load from CONFIG_JSON or individual env vars (Render cold-start) ──
+  // ── 3. Override from CONFIG_JSON env var (Render cold-start) ────────
   const envConfig = process.env.CONFIG_JSON;
   if (envConfig) {
     try {
       const parsed = JSON.parse(envConfig);
-      console.log('[config] Loaded configuration from CONFIG_JSON environment variable');
-      return { ...DEFAULT_CONFIG, ...parsed };
+      config = { ...config, ...parsed };
+      console.log('[config] Overridden from CONFIG_JSON environment variable');
     } catch (err) {
-      console.warn('[config] Failed to parse CONFIG_JSON env var, using defaults:', err);
+      console.warn('[config] Failed to parse CONFIG_JSON env var:', err);
     }
   }
 
-  // ── Fallback: individual env vars (overcomes Render 4KB limit) ─────────────────
+  // ── 4. Override from individual CONFIG_* env vars (highest priority) ─
   const envMap: Record<string, string> = {
     CONFIG_webhookSecret: 'webhookSecret',
     CONFIG_welcomeMessage: 'welcomeMessage',
@@ -89,11 +92,11 @@ function loadFromDisk(): AppConfig {
   }
 
   if (Object.keys(envOverrides).length > 0) {
-    console.log(`[config] Loaded ${Object.keys(envOverrides).length} field(s) from individual CONFIG_* env vars`);
-    return { ...DEFAULT_CONFIG, ...envOverrides };
+    config = { ...config, ...envOverrides };
+    console.log(`[config] Overridden ${Object.keys(envOverrides).length} field(s) from CONFIG_* env vars`);
   }
 
-  return { ...DEFAULT_CONFIG };
+  return config;
 }
 
 /** Write the current in-memory config to disk with directory verification. */
@@ -209,7 +212,11 @@ export function updateConfig(patch: Partial<AppConfig>): AppConfig & { verified:
   // ── Update memory ────────────────────────────────────────────────
   _config = updated;
 
-  const message = 'สำเร็จ: บันทึกข้อมูลและอัปเดตพารามิเตอร์เข้าสู่ระบบหลัก (In-Memory) เรียบร้อยแล้ว';
+  const hasEnvVars = Object.keys(process.env).some((k) => k.startsWith('CONFIG_'));
+  const envNote = hasEnvVars
+    ? ' ⚠️ (Render) อย่าลืมอัปเดต Environment Variables: ไปที่ Render Dashboard → Environment → แก้ไข CONFIG_*'
+    : '';
+  const message = 'สำเร็จ: บันทึกข้อมูลและอัปเดตพารามิเตอร์เข้าสู่ระบบหลัก (In-Memory) เรียบร้อยแล้ว' + envNote;
   return { ..._config, verified: true as const, message };
 }
 

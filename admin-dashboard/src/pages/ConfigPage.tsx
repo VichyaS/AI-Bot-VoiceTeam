@@ -358,9 +358,11 @@ export default function ConfigPage() {
 /* ── Export Config Button ─────────────────────────────────────────── */
 function ExportConfigButton() {
   const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   const handleExport = async () => {
     setExporting(true);
+    setExportMsg(null);
     try {
       const token = localStorage.getItem('ac_bot_admin_token');
       const res = await fetch('/api/admin/config/export', {
@@ -369,25 +371,57 @@ function ExportConfigButton() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const config = await res.json();
 
-      // Copy to clipboard
+      // Build CONFIG_* format text
+      const lines: string[] = [];
+      for (const [key, value] of Object.entries(config)) {
+        if (value === null || value === undefined) continue;
+        const envKey = `CONFIG_${key}`;
+        if (typeof value === 'string') {
+          lines.push(`${envKey}=${value}`);
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
+          lines.push(`${envKey}=${String(value)}`);
+        } else if (Array.isArray(value)) {
+          lines.push(`${envKey}=${JSON.stringify(value)}`);
+        }
+      }
+
       await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
-      alert('✅ Export เรียบร้อย!\n\nคัดลอก Config JSON ไปยัง Clipboard แล้ว\n\nไปที่ Render Dashboard → Environment → Add:\n\nKey: CONFIG_systemPrompt\nValue: วางเฉพาะ systemPrompt\n\nหรือแยกแต่ละฟิลด์ตาม CONFIG_*');
+      setExportMsg(`✅ Config JSON คัดลอกไปยัง Clipboard แล้ว!
+
+📋 วิธีอัปเดตบน Render:
+
+1. เปิด https://dashboard.render.com
+2. เลือก Web Service → Environment
+3. ลบ CONFIG_JSON (ถ้ามี)
+4. สำหรับฟิลด์ที่เปลี่ยนแปลง:
+`);
+      // Add specific changed fields hint
+      setExportMsg(prev => (prev || '') + `- CONFIG_systemPrompt (ถ้าเปลี่ยน system prompt)
+- CONFIG_departments (ถ้าเปลี่ยนแผนก)
+- CONFIG_* ของฟิลด์อื่นๆ ที่เปลี่ยน
+5. Save → Deploy`);
     } catch (err) {
-      alert(`❌ Export failed: ${(err as Error).message}`);
+      setExportMsg(`❌ Export failed: ${(err as Error).message}`);
     } finally {
       setExporting(false);
     }
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleExport}
-      disabled={exporting}
-      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-60 ml-auto"
-    >
-      <DownloadIcon />
-      {exporting ? 'Exporting…' : 'Export Config'}
-    </button>
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={handleExport}
+        disabled={exporting}
+        className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-60"
+      >
+        <DownloadIcon />
+        {exporting ? 'Exporting…' : 'Export Config'}
+      </button>
+      {exportMsg && (
+        <div className="text-xs text-gray-500 whitespace-pre-wrap max-w-md bg-gray-50 rounded-lg border border-gray-200 p-3">
+          {exportMsg}
+        </div>
+      )}
+    </div>
   );
-}
