@@ -33,10 +33,17 @@ async function downloadPlayit(): Promise<string> {
   console.log('[tunnel] Downloading Playit.gg agent...');
   return new Promise((resolve, reject) => {
     const f = fs.createWriteStream(p);
-    https.get('https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64', (res) => {
-      (res.statusCode === 302 || res.statusCode === 301 ? https.get(res.headers.location!, (r2) => r2) : res).pipe(f);
-      f.on('finish', () => { f.close(); fs.chmodSync(p, 0o755); resolve(p); });
-    }).on('error', reject);
+    const doGet = (url: string) => {
+      https.get(url, (res) => {
+        if (res.statusCode === 302 || res.statusCode === 301) {
+          doGet(res.headers.location!);
+          return;
+        }
+        res.pipe(f);
+        f.on('finish', () => { f.close(); fs.chmodSync(p, 0o755); resolve(p); });
+      }).on('error', reject);
+    };
+    doGet('https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64');
   });
 }
 
