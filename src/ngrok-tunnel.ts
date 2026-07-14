@@ -22,11 +22,14 @@ export interface NgrokTunnelInfo {
 }
 
 /**
- * Starts an ngrok TCP tunnel for the SIP port.
+ * Starts an ngrok tunnel for the SIP port.
+ * TCP is preferred but requires a card on free tier.
+ * HTTP tunnel can be used as a workaround for testing.
  * @returns The public ngrok URL and port.
  */
 export async function startNgrokTunnel(sipPort: number): Promise<NgrokTunnelInfo> {
   const authToken = process.env.NGROK_AUTHTOKEN;
+  const tunnelType = process.env.NGROK_TUNNEL_TYPE || 'tcp'; // 'tcp' or 'http'
 
   if (!authToken) {
     console.log('[ngrok] NGROK_AUTHTOKEN environment variable is not set');
@@ -34,28 +37,41 @@ export async function startNgrokTunnel(sipPort: number): Promise<NgrokTunnelInfo
     throw new Error('NGROK_AUTHTOKEN not configured');
   }
 
-  console.log(`[ngrok] Starting TCP tunnel for SIP port ${sipPort}...`);
-  emitInfo(`[ngrok] Starting TCP tunnel for SIP port ${sipPort}...`);
+  console.log(`[ngrok] Starting ${tunnelType} tunnel for SIP port ${sipPort}...`);
+  emitInfo(`[ngrok] Starting ${tunnelType} tunnel for SIP port ${sipPort}...`);
 
   try {
-    // Create TCP tunnel
-    tunnel = await ngrok.connect({
+    const config: any = {
       addr: sipPort,
-      proto: 'tcp',
+      proto: tunnelType as 'tcp' | 'http',
       authtoken: authToken,
-    });
+    };
 
-    // Parse URL (format: tcp://0.tcp.ngrok.io:12345)
+    // For HTTP tunnel, add auth to protect the endpoint
+    if (tunnelType === 'http') {
+      config.basic_auth = [`bot:${authToken.slice(0, 8)}`];
+    }
+
+    tunnel = await ngrok.connect(config);
+
     const url = tunnel.url();
     const parsed = new URL(url);
-    const port = parseInt(parsed.port, 10);
+    const port = parseInt(parsed.port, 10) || (tunnelType === 'http' ? 443 : 0);
     const hostname = parsed.hostname;
 
     currentUrl = url;
-    console.log(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
-    console.log(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
-    emitInfo(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
-    emitInfo(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
+
+    if (tunnelType === 'tcp') {
+      console.log(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
+      console.log(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
+      emitInfo(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
+      emitInfo(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
+    } else {
+      console.log(`[ngrok] ✅ HTTP tunnel established: ${url}`);
+      console.log(`[ngrok] → Bot can be reached at this URL for webhook + WS`);
+      emitInfo(`[ngrok] ✅ HTTP tunnel established: ${url}`);
+      emitInfo(`[ngrok] → Bot can be reached at this URL`);
+    }
 
     return { url, port };
   } catch (err: any) {
