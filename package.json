@@ -60,6 +60,7 @@
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@ngrok/ngrok": "^1.7.0",
     "bcrypt": "^6.0.0",
     "debug": "^4.4.3",
     "eventemitter2": "^6.4.9",

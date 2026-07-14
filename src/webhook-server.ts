@@ -32,6 +32,7 @@ import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
+import { startNgrokTunnel, stopNgrokTunnel } from './ngrok-tunnel.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -89,6 +90,20 @@ const httpServer = createServer(app);
 
 // Attach WebSocket server (noServer mode using HTTP upgrade)
 createLogWebSocketServer(httpServer);
+
+// ── Start ngrok tunnel (if enabled) ─────────────────────────────────
+const useNgrok = process.env.NGROK_AUTHTOKEN ? true : false;
+if (useNgrok) {
+  const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
+  startNgrokTunnel(sipPort)
+    .then((info) => {
+      emitInfo(`[ngrok] SIP endpoint public URL: tcp://${info.url}`);
+      emitInfo(`[ngrok] Update SBC Proxy Set → Host: ${new URL(info.url).hostname}, Port: ${info.port}, Protocol: TCP`);
+    })
+    .catch((err) => {
+      emitError(`[ngrok] Tunnel startup failed: ${err.message}. SIP/RTP will not be reachable.`);
+    });
+}
 
 // ── AudioCodes Bot API WebSocket Server ────────────────────────────
 // This WebSocket endpoint handles the VoiceAI Connect internal protocol.
