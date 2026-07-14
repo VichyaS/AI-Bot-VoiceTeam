@@ -29,10 +29,12 @@ export async function startNgrokTunnel(sipPort: number): Promise<NgrokTunnelInfo
   const authToken = process.env.NGROK_AUTHTOKEN;
 
   if (!authToken) {
+    console.log('[ngrok] NGROK_AUTHTOKEN environment variable is not set');
     emitError('[ngrok] NGROK_AUTHTOKEN environment variable is not set');
     throw new Error('NGROK_AUTHTOKEN not configured');
   }
 
+  console.log(`[ngrok] Starting TCP tunnel for SIP port ${sipPort}...`);
   emitInfo(`[ngrok] Starting TCP tunnel for SIP port ${sipPort}...`);
 
   try {
@@ -50,12 +52,16 @@ export async function startNgrokTunnel(sipPort: number): Promise<NgrokTunnelInfo
     const hostname = parsed.hostname;
 
     currentUrl = url;
+    console.log(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
+    console.log(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
     emitInfo(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
-    emitInfo(`[ngrok]   → Set SBC Proxy to TCP ${hostname}:${port}`);
+    emitInfo(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
 
     return { url, port };
   } catch (err: any) {
-    emitError(`[ngrok] Failed to create tunnel: ${err.message}`);
+    const msg = `[ngrok] Failed to create tunnel: ${err.message}`;
+    console.log(msg);
+    emitError(msg);
     throw err;
   }
 }

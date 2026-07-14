@@ -95,7 +95,8 @@ createLogWebSocketServer(httpServer);
 const hasNgrokToken = !!process.env.NGROK_AUTHTOKEN;
 if (hasNgrokToken) {
   const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
-  emitInfo(`[ngrok] NGROK_AUTHTOKEN detected — starting TCP tunnel for SIP port ${sipPort}...`);
+  console.log(`[ngrok] NGROK_AUTHTOKEN detected — starting TCP tunnel for SIP port ${sipPort}...`);
+  emitInfo(`[ngrok] Starting TCP tunnel for SIP port ${sipPort}...`);
   startNgrokTunnel(sipPort)
     .then((info) => {
       emitInfo(`[ngrok] ✅ TCP tunnel established: ${new URL(info.url).hostname}:${info.port}`);
