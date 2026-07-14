@@ -62,6 +62,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@ngrok/ngrok": "^1.7.0",
     "bcrypt": "^6.0.0",
+    "cloudflared": "^0.7.1",
     "debug": "^4.4.3",
     "eventemitter2": "^6.4.9",
     "express": "^5.2.1",

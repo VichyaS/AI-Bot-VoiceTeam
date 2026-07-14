@@ -1,106 +1,93 @@
 /**
- * Ngrok Tunnel Manager
+ * Tunnel Manager — สร้าง public tunnel สำหรับ SIP/RTP
  * 
- * Creates a TCP tunnel for SIP (UDP:5060) via ngrok so the SBC
- * can reach the Bot's SIP/RTP endpoint on Render (which doesn't
- * support UDP ingress).
+ * รองรับ:
+ * 1. Playit.gg (ฟรี, TCP, ไม่ต้องใช้บัตร) — auto-download binary
+ * 2. ngrok HTTP (ฟรี, ไม่ต้องใช้บัตร, ต้องมี NGROK_AUTHTOKEN)
  * 
- * Environment variables:
- *   NGROK_AUTHTOKEN  — ngrok auth token (required)
- *   SIP_PORT         — local SIP port (default 5060)
+ * Environment:
+ *   TUNNEL_TYPE    — "playit" (default), "ngrok", หรือ "auto"
+ *   NGROK_AUTHTOKEN — (สำหรับ ngrok)
+ *   SIP_PORT       — local SIP port (default 5060)
  */
 
-import * as ngrok from '@ngrok/ngrok';
+import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
+import https from 'node:https';
 import { emitInfo, emitError } from './system-logger.js';
 
-let tunnel: any = null;
-let currentUrl = '';
+let tunnelProcess: ChildProcess | null = null;
+let tunnelUrl = '';
+let tunnelPort = 0;
 
-export interface NgrokTunnelInfo {
+export interface TunnelInfo {
   url: string;
   port: number;
+  type: 'playit' | 'ngrok';
 }
 
-/**
- * Starts an ngrok tunnel for the SIP port.
- * TCP is preferred but requires a card on free tier.
- * HTTP tunnel can be used as a workaround for testing.
- * @returns The public ngrok URL and port.
- */
-export async function startNgrokTunnel(sipPort: number): Promise<NgrokTunnelInfo> {
-  const authToken = process.env.NGROK_AUTHTOKEN;
-  const tunnelType = process.env.NGROK_TUNNEL_TYPE || 'tcp'; // 'tcp' or 'http'
+/** ดาวน์โหลด Playit.gg Agent binary */
+async function downloadPlayit(): Promise<string> {
+  const p = '/tmp/playit';
+  if (fs.existsSync(p)) return p;
+  console.log('[tunnel] Downloading Playit.gg agent...');
+  return new Promise((resolve, reject) => {
+    const f = fs.createWriteStream(p);
+    https.get('https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64', (res) => {
+      (res.statusCode === 302 || res.statusCode === 301 ? https.get(res.headers.location!, (r2) => r2) : res).pipe(f);
+      f.on('finish', () => { f.close(); fs.chmodSync(p, 0o755); resolve(p); });
+    }).on('error', reject);
+  });
+}
 
-  if (!authToken) {
-    console.log('[ngrok] NGROK_AUTHTOKEN environment variable is not set');
-    emitError('[ngrok] NGROK_AUTHTOKEN environment variable is not set');
-    throw new Error('NGROK_AUTHTOKEN not configured');
-  }
+/** เริ่ม Playit.gg tunnel (TCP, ฟรี) */
+async function startPlayit(port: number): Promise<TunnelInfo> {
+  const bin = await downloadPlayit();
+  const secret = process.env.PLAYIT_SECRET || '';
+  console.log(`[tunnel] Starting Playit.gg → localhost:${port}...`);
 
-  console.log(`[ngrok] Starting ${tunnelType} tunnel for SIP port ${sipPort}...`);
-  emitInfo(`[ngrok] Starting ${tunnelType} tunnel for SIP port ${sipPort}...`);
-
-  try {
-    const config: any = {
-      addr: sipPort,
-      proto: tunnelType as 'tcp' | 'http',
-      authtoken: authToken,
+  return new Promise((resolve, reject) => {
+    tunnelProcess = spawn(bin, secret ? ['--secret', secret, '--port', String(port)] : ['--port', String(port)], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let done = false;
+    const onData = (text: string) => {
+      process.stdout.write(text);
+      const m = text.match(/https:\/\/[a-zA-Z0-9-]+\.playit\.gg/);
+      if (m && !done) { done = true; tunnelUrl = m[0]; tunnelPort = port; resolve({ url: tunnelUrl, port, type: 'playit' }); }
     };
-
-    // For HTTP tunnel, add auth to protect the endpoint
-    if (tunnelType === 'http') {
-      config.basic_auth = [`bot:${authToken.slice(0, 8)}`];
-    }
-
-    tunnel = await ngrok.connect(config);
-
-    const url = tunnel.url();
-    const parsed = new URL(url);
-    const port = parseInt(parsed.port, 10) || (tunnelType === 'http' ? 443 : 0);
-    const hostname = parsed.hostname;
-
-    currentUrl = url;
-
-    if (tunnelType === 'tcp') {
-      console.log(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
-      console.log(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
-      emitInfo(`[ngrok] ✅ TCP tunnel established: ${hostname}:${port}`);
-      emitInfo(`[ngrok] → SBC Proxy Set: Host=${hostname}, Port=${port}, Transport=TCP`);
-    } else {
-      console.log(`[ngrok] ✅ HTTP tunnel established: ${url}`);
-      console.log(`[ngrok] → Bot can be reached at this URL for webhook + WS`);
-      emitInfo(`[ngrok] ✅ HTTP tunnel established: ${url}`);
-      emitInfo(`[ngrok] → Bot can be reached at this URL`);
-    }
-
-    return { url, port };
-  } catch (err: any) {
-    const msg = `[ngrok] Failed to create tunnel: ${err.message}`;
-    console.log(msg);
-    emitError(msg);
-    throw err;
-  }
+    tunnelProcess!.stdout?.on('data', (d: Buffer) => onData(d.toString()));
+    tunnelProcess!.stderr?.on('data', (d: Buffer) => onData(d.toString()));
+    tunnelProcess!.on('error', (e) => { if (!done) reject(e); });
+    tunnelProcess!.on('exit', (c) => { tunnelProcess = null; if (!done) reject(new Error(`exit code ${c}`)); });
+    setTimeout(() => { if (!done) reject(new Error('Timeout')); }, 25000);
+  });
 }
 
-/**
- * Stops the ngrok tunnel.
- */
-export async function stopNgrokTunnel(): Promise<void> {
-  if (tunnel) {
-    try {
-      await ngrok.disconnect(tunnel);
-      tunnel = null;
-      currentUrl = '';
-      emitInfo('[ngrok] Tunnel disconnected');
-    } catch (err: any) {
-      emitError(`[ngrok] Error disconnecting: ${err.message}`);
-    }
-  }
+/** เริ่ม ngrok HTTP tunnel (ฟรี) */
+async function startNgrok(port: number): Promise<TunnelInfo> {
+  const { default: ngrok } = await import('@ngrok/ngrok');
+  const token = process.env.NGROK_AUTHTOKEN;
+  if (!token) throw new Error('NGROK_AUTHTOKEN not set');
+  console.log('[tunnel] Starting ngrok HTTP tunnel...');
+  const t = await ngrok.connect({ addr: port, proto: 'http', authtoken: token });
+  tunnelUrl = t.url() || '';
+  tunnelPort = 443;
+  return { url: tunnelUrl, port: 443, type: 'ngrok' };
 }
 
-/**
- * Returns the current ngrok tunnel URL, or null.
- */
-export function getNgrokUrl(): string | null {
-  return currentUrl || null;
+/** เริ่ม tunnel */
+export async function startTunnel(sipPort: number): Promise<TunnelInfo> {
+  const type = process.env.TUNNEL_TYPE || 'auto';
+  try {
+    if (type === 'playit' || type === 'auto') return await startPlayit(sipPort);
+  } catch (e: any) { console.log(`[tunnel] Playit failed: ${e.message}`); }
+  return await startNgrok(sipPort);
 }
+
+export function stopTunnel(): void {
+  tunnelProcess?.kill('SIGTERM');
+  tunnelProcess = null;
+}
+
+export function getTunnelUrl(): string { return tunnelUrl; }

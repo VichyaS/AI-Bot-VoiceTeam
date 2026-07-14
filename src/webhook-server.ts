@@ -32,7 +32,7 @@ import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
-import { startNgrokTunnel, stopNgrokTunnel } from './ngrok-tunnel.js';
+import { startTunnel, stopTunnel, getTunnelUrl } from './ngrok-tunnel.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -92,21 +92,24 @@ const httpServer = createServer(app);
 createLogWebSocketServer(httpServer);
 
 // ── Start ngrok tunnel (if auth token is set) ──────────────────────
-const hasNgrokToken = !!process.env.NGROK_AUTHTOKEN;
+const hasNgrokToken = !!process.env.NGROK_AUTHTOKEN || !!process.env.TUNNEL_TYPE;
 if (hasNgrokToken) {
   const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
-  console.log(`[ngrok] NGROK_AUTHTOKEN detected — starting TCP tunnel for SIP port ${sipPort}...`);
-  emitInfo(`[ngrok] Starting TCP tunnel for SIP port ${sipPort}...`);
-  startNgrokTunnel(sipPort)
+  console.log(`[tunnel] Tunnel token detected — starting tunnel for SIP port ${sipPort}...`);
+  emitInfo(`[tunnel] Starting tunnel for SIP port ${sipPort}...`);
+  startTunnel(sipPort)
     .then((info) => {
-      emitInfo(`[ngrok] ✅ TCP tunnel established: ${new URL(info.url).hostname}:${info.port}`);
-      emitInfo(`[ngrok] → SBC Proxy Set: Host=${new URL(info.url).hostname}, Port=${info.port}, Transport=TCP`);
+      console.log(`[tunnel] ✅ ${info.type} tunnel established: ${info.url}`);
+      console.log(`[tunnel] → SBC: Set Webhook URL to ${info.url}/api/audiocodes/webhook`);
+      emitInfo(`[tunnel] ✅ ${info.type} tunnel: ${info.url}`);
     })
     .catch((err) => {
-      emitError(`[ngrok] ❌ Tunnel startup failed: ${err.message}`);
+      const msg = `[tunnel] ❌ Failed: ${err.message}`;
+      console.log(msg);
+      emitError(msg);
     });
 } else {
-  console.log('[ngrok] NGROK_AUTHTOKEN not set — skipping tunnel (SIP/RTP will not be reachable)');
+  console.log('[tunnel] No tunnel token set — SIP/RTP will not be reachable from outside');
 }
 
 // ── AudioCodes Bot API WebSocket Server ────────────────────────────
