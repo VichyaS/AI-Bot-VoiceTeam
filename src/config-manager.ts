@@ -62,6 +62,8 @@ function loadFromDisk(): AppConfig {
     CONFIG_clientSecret: 'clientSecret',
     CONFIG_secretExpiryDate: 'secretExpiryDate',
     CONFIG_searchScope: 'searchScope',
+    CONFIG_speechKey: 'speechKey',
+    CONFIG_speechRegion: 'speechRegion',
     CONFIG_webhookPublicUrl: 'webhookPublicUrl',
     CONFIG_sipDomain: 'sipDomain',
     CONFIG_operatorFallbackSip: 'operatorFallbackSip',

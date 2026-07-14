@@ -30,6 +30,7 @@ import { emitInfo, emitAi, emitEntraId, emitTransfer, emitError, emitCallEvent }
 import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
+import { VoiceAiAsrProcessor } from './speech-asr.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -95,42 +96,96 @@ const botWsPath = '/api/audiocodes/bot-ws';
 
 const botWsServer = new WebSocketServer({ noServer: true });
 
+// Map sessionId → ASR processor
+const asrProcessors = new Map<string, VoiceAiAsrProcessor>();
+
 botWsServer.on('connection', (ws: WsSocket, req) => {
   console.log('[bot-ws] VoiceAI WebSocket client connected');
 
   ws.on('message', (data) => {
+    // ── Handle binary audio data from SBC ─────────────────────────
+    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+      const audioBuf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      // Find the current session's ASR processor and feed audio
+      // For simplicity, use the last active session
+      const lastSessionId = asrProcessors.keys().next().value;
+      if (lastSessionId) {
+        const processor = asrProcessors.get(lastSessionId);
+        if (processor) {
+          processor.feedAudio(audioBuf);
+        }
+      }
+      return;
+    }
+
     try {
       const msg = JSON.parse(data.toString());
       console.log('[bot-ws] Received:', msg.message || msg.type);
 
       if (msg.message === 'Start') {
-        // ── Session started ────────────────────────────────────────
         const sessionId = msg.sessionID || 'unknown';
         const caller = msg.caller || 'unknown';
         console.log(`[bot-ws] Session started: ${sessionId}, caller: ${caller}`);
         emitCallEvent('call-started', sessionId, caller);
         emitInfo(`Incoming call from ${caller}`);
+        emitInfo(`[DEBUG] Media formats: ${(msg.mediaFormats || []).join(', ')}`);
 
-        // NOTE: SBC VoiceAI Connect does NOT expect any response to Start.
-        // TTS welcome prompt is handled by the SBC itself.
-        // Speech recognition results will arrive as RecognitionResult messages.
+        // Start ASR for this session
+        const cfg = getConfig();
+        if (cfg.speechKey && cfg.speechRegion) {
+          const processor = new VoiceAiAsrProcessor(
+            sessionId,
+            cfg.speechKey,
+            cfg.speechRegion,
+            (text) => {
+              // ASR recognized text — process via webhook
+              emitAi(`User said: "${text}"`);
+              fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'activities',
+                  conversationId: sessionId,
+                  caller: caller,
+                  activities: [{ type: 'message', text }],
+                }),
+              })
+                .then((res) => res.json())
+                .then((response: any) => {
+                  if (response.activities) {
+                    for (const activity of response.activities) {
+                      if (activity.type === 'message' && activity.text) {
+                        emitInfo(`Bot response: "${activity.text}"`);
+                      }
+                      if (activity.type === 'event' && activity.name === 'transfer') {
+                        emitTransfer(`Transfer to: ${activity.parameters?.target || ''}`);
+                      }
+                    }
+                  }
+                })
+                .catch((err) => console.error('[bot-ws] Webhook error:', err));
+            },
+            (err) => {
+              emitError(`ASR error: ${err.message}`);
+            },
+          );
+          asrProcessors.set(sessionId, processor);
+          emitInfo(`[ASR] Started Azure Speech recognition for session ${sessionId}`);
+        } else {
+          emitInfo(`[ASR] Speech credentials not configured. Set speechKey and speechRegion in Settings.`);
+        }
       }
 
       if (msg.message === 'KeepAlive') {
-        // Respond to keep-alive — SBC expects this reply
         ws.send(JSON.stringify({ message: 'KeepAlive', sessionID: msg.sessionID }));
       }
 
       if (msg.message === 'RecognitionResult' || msg.type === 'activities') {
-        // ── User speech received from SBC ASR ──────────────────────
         const text = msg.text || msg.alternatives?.[0]?.text || '';
         const sessionId = msg.sessionID || 'unknown';
-
         if (text) {
           emitAi(`User said: "${text}"`);
           console.log(`[bot-ws] User speech: "${text}"`);
-
-          // Forward to webhook handler for AI processing
           fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -147,11 +202,9 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
                 for (const activity of response.activities) {
                   if (activity.type === 'message' && activity.text) {
                     emitInfo(`Bot response: "${activity.text}"`);
-                    // SBC handles TTS internally — just log
                   }
                   if (activity.type === 'event' && activity.name === 'transfer') {
                     emitTransfer(`Transfer to: ${activity.parameters?.target || ''}`);
-                    // SBC handles SIP transfer internally
                   }
                 }
               }

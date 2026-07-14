@@ -28,6 +28,10 @@ export interface AppConfig {
   mfaEnabled: boolean;
   /** Allowed email domain for MFA login (e.g. company.com) */
   mfaAllowedDomain: string;
+  /** Azure Speech Services key for ASR */
+  speechKey: string;
+  /** Azure Speech Services region */
+  speechRegion: string;
   /** Public URL for the webhook (for VoiceAI connection test) */
   webhookPublicUrl: string;
   sipDomain: string;
@@ -65,6 +69,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   searchScope: '',
   mfaEnabled: false,
   mfaAllowedDomain: '',
+  speechKey: '',
+  speechRegion: '',
   webhookPublicUrl: '',
   sipDomain: 'sip:company.com',
   sbcPort: 5061,

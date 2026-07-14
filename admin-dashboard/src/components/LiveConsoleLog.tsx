@@ -178,6 +178,19 @@ export default function LiveConsoleLog() {
           >
             ✕ Clear
           </button>
+          <button
+            onClick={() => {
+              const text = logs.map(l => `[${formatTime(l.timestamp)}] [${l.type}] ${l.message}`).join('\n');
+              const blob = new Blob([text], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = `bot-logs-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+              a.click(); URL.revokeObjectURL(url);
+            }}
+            className="rounded bg-gray-800 px-2.5 py-1 text-[11px] font-medium text-gray-400 transition-colors hover:bg-gray-700"
+          >
+            ⬇ Logs
+          </button>
         </div>
       </div>
 
