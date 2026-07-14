@@ -130,6 +130,16 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
         emitInfo(`Incoming call from ${caller}`);
         emitInfo(`[DEBUG] Media formats: ${(msg.mediaFormats || []).join(', ')}`);
 
+        // SBC is waiting for a response to start media streaming
+        // Try sessionAccepted with selected media format
+        const selectedFormat = (msg.mediaFormats || []).includes('raw/lpcm16_8') ? 'raw/lpcm16_8' : 'raw/mulaw';
+        ws.send(JSON.stringify({
+          message: 'sessionAccepted',
+          sessionID: sessionId,
+          mediaFormat: selectedFormat,
+        }));
+        emitInfo(`[WS] Sent sessionAccepted with format: ${selectedFormat}`);
+
         // Start ASR for this session
         const cfg = getConfig();
         if (cfg.speechKey && cfg.speechRegion) {
