@@ -148,20 +148,25 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
       if (msg.message === 'Start') {
         const sessionId = msg.sessionID || 'unknown';
         const caller = msg.caller || 'unknown';
-        console.log(`[bot-ws] Session started: ${sessionId}, caller: ${caller}`);
+        console.log(`[bot-ws] ✅ Received Start: session=${sessionId}, caller=${caller}`);
         emitCallEvent('call-started', sessionId, caller);
         emitInfo(`Incoming call from ${caller}`);
         emitInfo(`[DEBUG] Media formats: ${(msg.mediaFormats || []).join(', ')}`);
 
-        // SBC is waiting for a response to start media streaming
-        // Try sessionAccepted with selected media format
+        // ── Respond to SBC to acknowledge Start ───────────────────
+        // SBC needs a response to proceed. Send selected media format.
         const selectedFormat = (msg.mediaFormats || []).includes('raw/lpcm16_8') ? 'raw/lpcm16_8' : 'raw/mulaw';
-        ws.send(JSON.stringify({
+        const response = JSON.stringify({
           message: 'sessionAccepted',
           sessionID: sessionId,
           mediaFormat: selectedFormat,
-        }));
-        emitInfo(`[WS] Sent sessionAccepted with format: ${selectedFormat}`);
+        });
+        console.log(`[bot-ws] Sending response: ${response}`);
+        ws.send(response, (err: any) => {
+          if (err) console.error('[bot-ws] Error sending sessionAccepted:', err.message);
+          else console.log('[bot-ws] ✅ sessionAccepted sent successfully');
+        });
+        emitInfo(`[WS] Sent sessionAccepted`);
 
         // Start ASR for this session
         const cfg = getConfig();
