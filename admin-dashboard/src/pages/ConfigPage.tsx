@@ -38,6 +38,9 @@ const LoaderIcon = () => (
 const LogoutIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
 );
+const DownloadIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+);
 
 /* ── Input components ─────────────────────────────────────────────── */
 function TextInput({ value, onChange, placeholder, type = 'text', error }: {
@@ -330,6 +333,8 @@ export default function ConfigPage() {
                 {testing === 'sip' ? <LoaderIcon /> : <RouteIcon />}
                 {testing === 'sip' ? 'Testing…' : 'Test Routing & SIP'}
               </button>
+              {/* Export Config */}
+              <ExportConfigButton />
             </div>
 
             {/* Connection test modal */}
@@ -347,5 +352,42 @@ export default function ConfigPage() {
 
       {toast && <Toast toast={toast} onClose={dismissToast} />}
     </div>
+  );
+}
+
+/* ── Export Config Button ─────────────────────────────────────────── */
+function ExportConfigButton() {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('ac_bot_admin_token');
+      const res = await fetch('/api/admin/config/export', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const config = await res.json();
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+      alert('✅ Export เรียบร้อย!\n\nคัดลอก Config JSON ไปยัง Clipboard แล้ว\n\nไปที่ Render Dashboard → Environment → Add:\n\nKey: CONFIG_systemPrompt\nValue: วางเฉพาะ systemPrompt\n\nหรือแยกแต่ละฟิลด์ตาม CONFIG_*');
+    } catch (err) {
+      alert(`❌ Export failed: ${(err as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleExport}
+      disabled={exporting}
+      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-60 ml-auto"
+    >
+      <DownloadIcon />
+      {exporting ? 'Exporting…' : 'Export Config'}
+    </button>
   );
 }

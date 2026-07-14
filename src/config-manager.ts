@@ -33,7 +33,7 @@ function loadFromDisk(): AppConfig {
     console.warn('[config] Failed to read config.json, using defaults:', err);
   }
 
-  // ── Fallback: load from CONFIG_JSON env var (Render cold-start workaround) ──
+  // ── Fallback: load from CONFIG_JSON or individual env vars (Render cold-start) ──
   const envConfig = process.env.CONFIG_JSON;
   if (envConfig) {
     try {
@@ -43,6 +43,49 @@ function loadFromDisk(): AppConfig {
     } catch (err) {
       console.warn('[config] Failed to parse CONFIG_JSON env var, using defaults:', err);
     }
+  }
+
+  // ── Fallback: individual env vars (overcomes Render 4KB limit) ─────────────────
+  const envMap: Record<string, string> = {
+    CONFIG_webhookSecret: 'webhookSecret',
+    CONFIG_welcomeMessage: 'welcomeMessage',
+    CONFIG_fallbackMessage: 'fallbackMessage',
+    CONFIG_fallbackDestination: 'fallbackDestination',
+    CONFIG_openRouterApiKey: 'openRouterApiKey',
+    CONFIG_aiModelId: 'aiModelId',
+    CONFIG_systemPrompt: 'systemPrompt',
+    CONFIG_tenantId: 'tenantId',
+    CONFIG_clientId: 'clientId',
+    CONFIG_clientSecret: 'clientSecret',
+    CONFIG_secretExpiryDate: 'secretExpiryDate',
+    CONFIG_searchScope: 'searchScope',
+    CONFIG_webhookPublicUrl: 'webhookPublicUrl',
+    CONFIG_sipDomain: 'sipDomain',
+    CONFIG_operatorFallbackSip: 'operatorFallbackSip',
+  };
+  const envOverrides: Record<string, any> = {};
+  for (const [envKey, configKey] of Object.entries(envMap)) {
+    const val = process.env[envKey];
+    if (val !== undefined) {
+      envOverrides[configKey] = val;
+    }
+  }
+  // Numeric/boolean fields
+  if (process.env.CONFIG_sbcPort) envOverrides.sbcPort = parseInt(process.env.CONFIG_sbcPort, 10);
+  if (process.env.CONFIG_maxRetries) envOverrides.maxRetries = parseInt(process.env.CONFIG_maxRetries, 10);
+  if (process.env.CONFIG_maxTokens) envOverrides.maxTokens = parseInt(process.env.CONFIG_maxTokens, 10);
+  if (process.env.CONFIG_transferTimeout) envOverrides.transferTimeout = parseInt(process.env.CONFIG_transferTimeout, 10);
+  if (process.env.CONFIG_maxMatchResults) envOverrides.maxMatchResults = parseInt(process.env.CONFIG_maxMatchResults, 10);
+  if (process.env.CONFIG_temperature) envOverrides.temperature = parseFloat(process.env.CONFIG_temperature);
+  if (process.env.CONFIG_topP) envOverrides.topP = parseFloat(process.env.CONFIG_topP);
+  if (process.env.CONFIG_mfaEnabled === 'true') envOverrides.mfaEnabled = true;
+  if (process.env.CONFIG_mfaEnabled === 'false') envOverrides.mfaEnabled = false;
+  if (process.env.CONFIG_transferProtocol) envOverrides.transferProtocol = process.env.CONFIG_transferProtocol;
+  if (process.env.CONFIG_routingMode) envOverrides.routingMode = process.env.CONFIG_routingMode;
+
+  if (Object.keys(envOverrides).length > 0) {
+    console.log(`[config] Loaded ${Object.keys(envOverrides).length} field(s) from individual CONFIG_* env vars`);
+    return { ...DEFAULT_CONFIG, ...envOverrides };
   }
 
   return { ...DEFAULT_CONFIG };
