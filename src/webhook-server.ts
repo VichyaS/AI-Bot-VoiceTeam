@@ -111,12 +111,9 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
         emitCallEvent('call-started', sessionId, caller);
         emitInfo(`Incoming call from ${caller}`);
 
-        // Send welcome prompt via WebSocket
-        ws.send(JSON.stringify({
-          message: 'PlayPrompt',
-          sessionID: sessionId,
-          text: 'สวัสดีค่ะ ต้องการติดต่อใครคะ?',
-        }));
+        // NOTE: SBC VoiceAI Connect does NOT expect any response to Start.
+        // TTS welcome prompt is handled by the SBC itself.
+        // Speech recognition results will arrive as RecognitionResult messages.
       }
 
       if (msg.message === 'KeepAlive') {
@@ -124,12 +121,13 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
         ws.send(JSON.stringify({ message: 'KeepAlive', sessionID: msg.sessionID }));
       }
 
-      if (msg.type === 'activities' || msg.message === 'RecognitionResult') {
-        // ── User speech received ───────────────────────────────────
+      if (msg.message === 'RecognitionResult' || msg.type === 'activities') {
+        // ── User speech received from SBC ASR ──────────────────────
         const text = msg.text || msg.alternatives?.[0]?.text || '';
-        const sessionId = msg.sessionID || msg.sessionID || 'unknown';
+        const sessionId = msg.sessionID || 'unknown';
 
         if (text) {
+          emitAi(`User said: "${text}"`);
           console.log(`[bot-ws] User speech: "${text}"`);
 
           // Forward to webhook handler for AI processing
@@ -145,22 +143,15 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
           })
             .then((res) => res.json() as Promise<{ activities?: { type?: string; text?: string; name?: string; parameters?: Record<string, unknown> }[] }>)
             .then((response) => {
-              // Send TTS response back via WebSocket
               if (response.activities) {
                 for (const activity of response.activities) {
                   if (activity.type === 'message' && activity.text) {
-                    ws.send(JSON.stringify({
-                      message: 'PlayPrompt',
-                      sessionID: sessionId,
-                      text: activity.text,
-                    }));
+                    emitInfo(`Bot response: "${activity.text}"`);
+                    // SBC handles TTS internally — just log
                   }
                   if (activity.type === 'event' && activity.name === 'transfer') {
-                    ws.send(JSON.stringify({
-                      message: 'Transfer',
-                      sessionID: sessionId,
-                      target: activity.parameters?.target || '',
-                    }));
+                    emitTransfer(`Transfer to: ${activity.parameters?.target || ''}`);
+                    // SBC handles SIP transfer internally
                   }
                 }
               }
