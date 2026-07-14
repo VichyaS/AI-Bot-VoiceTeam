@@ -31,6 +31,7 @@ import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
+import { SipMediaEndpoint } from './sip-endpoint.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -246,6 +247,74 @@ httpServer.on('upgrade', (request, socket, head) => {
 });
 
 console.log(`[webhook] Bot WebSocket endpoint: ws://localhost:${PORT}${botWsPath}`);
+
+// ── SIP Media Endpoint ──────────────────────────────────────────────
+// Receives SIP calls + RTP audio directly from SBC for ASR processing.
+// SBC routes calls to this endpoint when VoiceAI is not available.
+const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
+const sipEndpoint = new SipMediaEndpoint(sipPort);
+sipEndpoint.listen();
+
+// Forward ASR-processed text to webhook handler
+sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
+  // Audio data received — feed to Azure Speech ASR
+  const cfg = getConfig();
+  if (cfg.speechKey && cfg.speechRegion) {
+    let processor = asrProcessors.get(sessionId);
+    if (!processor) {
+      processor = new VoiceAiAsrProcessor(
+        sessionId,
+        cfg.speechKey,
+        cfg.speechRegion,
+        (text) => {
+          emitAi(`User said: "${text}"`);
+          fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'activities',
+              conversationId: sessionId,
+              caller: 'sip-caller',
+              activities: [{ type: 'message', text }],
+            }),
+          })
+            .then((res) => res.json())
+            .then((response: any) => {
+              if (response.activities) {
+                for (const activity of response.activities) {
+                  if (activity.type === 'message' && activity.text) {
+                    emitInfo(`Bot response: "${activity.text}"`);
+                  }
+                  if (activity.type === 'event' && activity.name === 'transfer') {
+                    const target = activity.parameters?.target as string || '';
+                    emitTransfer(`Transfer to: ${target}`);
+                    sipEndpoint.sendTransfer(sessionId, target);
+                  }
+                }
+              }
+            })
+            .catch((err) => console.error('[sip] Webhook error:', err));
+        },
+        (err) => emitError(`ASR error: ${err.message}`),
+      );
+      asrProcessors.set(sessionId, processor);
+    }
+    // Feed audio as Buffer (convert Int16Array to Buffer)
+    const buf = Buffer.from(audioBuffer.buffer);
+    processor.feedAudio(buf);
+  }
+};
+
+sipEndpoint.onCallEnded = (sessionId) => {
+  emitCallEvent('call-ended', sessionId, 'sip-caller');
+  const processor = asrProcessors.get(sessionId);
+  if (processor) {
+    processor.stop();
+    asrProcessors.delete(sessionId);
+  }
+};
+
+console.log(`[webhook] SIP Media Endpoint listening on UDP port ${sipPort}`);
 
 // Middleware to parse JSON bodies (limit size to prevent JSON injection)
 app.use(express.json({ limit: '16kb' }));
