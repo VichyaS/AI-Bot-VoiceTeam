@@ -394,11 +394,9 @@ function ExportConfigButton() {
 2. เลือก Web Service → Environment
 3. ลบ CONFIG_JSON (ถ้ามี)
 4. สำหรับฟิลด์ที่เปลี่ยนแปลง:
-`);
-      // Add specific changed fields hint
-      setExportMsg(prev => (prev || '') + `- CONFIG_systemPrompt (ถ้าเปลี่ยน system prompt)
-- CONFIG_departments (ถ้าเปลี่ยนแผนก)
-- CONFIG_* ของฟิลด์อื่นๆ ที่เปลี่ยน
+   - CONFIG_systemPrompt (ถ้าเปลี่ยน system prompt)
+   - CONFIG_departments (ถ้าเปลี่ยนแผนก)
+   - CONFIG_* ของฟิลด์อื่นๆ ที่เปลี่ยน
 5. Save → Deploy`);
     } catch (err) {
       setExportMsg(`❌ Export failed: ${(err as Error).message}`);
@@ -425,3 +423,4 @@ function ExportConfigButton() {
       )}
     </div>
   );
+}
