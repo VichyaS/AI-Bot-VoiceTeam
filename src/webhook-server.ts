@@ -17,8 +17,6 @@ import { getDepartmentSipUri } from './department-lookup.js';
 import { generateTransferResponse } from './transfer.js';
 import { generateTransferFallbackResponse } from './transfer-fallback.js';
 import { getConfig } from './config-manager.js';
-import { BotApiWebSocket } from './websocket/bot-api.js';
-import type { BotConversationWebSocket } from './websocket/bot-conversation.js';
 import adminRouter from './admin-router.js';
 import authRouter from './auth-router.js';
 import unhandledRouter from './unhandled-router.js';
@@ -27,6 +25,7 @@ import testRouteRouter from './test-route-router.js';
 import usersRouter from './users-router.js';
 import mfaRouter from './mfa-router.js';
 import { createLogWebSocketServer } from './ws-server.js';
+import { WebSocketServer, WebSocket as WsSocket } from 'ws';
 import { emitInfo, emitAi, emitEntraId, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
 import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
@@ -90,34 +89,118 @@ const httpServer = createServer(app);
 createLogWebSocketServer(httpServer);
 
 // ── AudioCodes Bot API WebSocket Server ────────────────────────────
-// This is the WebSocket endpoint that SBC VoiceAI Connect connects to
-// using the URL configured in Voice.AI Connectors.
+// This WebSocket endpoint handles the VoiceAI Connect internal protocol.
+// SBC sends {"message":"Start",...} not the standard Bot API protocol.
 const botWsPath = '/api/audiocodes/bot-ws';
-const botApi = new BotApiWebSocket();
-botApi.listen({
-  server: httpServer,
-  path: botWsPath,
+
+const botWsServer = new WebSocketServer({ noServer: true });
+
+botWsServer.on('connection', (ws: WsSocket, req) => {
+  console.log('[bot-ws] VoiceAI WebSocket client connected');
+
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      console.log('[bot-ws] Received:', msg.message || msg.type);
+
+      if (msg.message === 'Start') {
+        // ── Session started ────────────────────────────────────────
+        const sessionId = msg.sessionID || 'unknown';
+        const caller = msg.caller || 'unknown';
+        console.log(`[bot-ws] Session started: ${sessionId}, caller: ${caller}`);
+        emitCallEvent('call-started', sessionId, caller);
+
+        // Respond to VoiceAI that session is accepted
+        ws.send(JSON.stringify({
+          message: 'sessionStarted',
+          sessionID: sessionId,
+        }));
+
+        // Also send webhook to process session start
+        fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'sessionStart',
+            conversationId: sessionId,
+            caller: caller,
+          }),
+        }).catch((err) => console.error('[bot-ws] Webhook sessionStart error:', err));
+      }
+
+      if (msg.message === 'KeepAlive') {
+        // Respond to keep-alive
+        ws.send(JSON.stringify({ message: 'KeepAlive', sessionID: msg.sessionID }));
+      }
+
+      if (msg.type === 'activities' || msg.message === 'RecognitionResult') {
+        // ── User speech received ───────────────────────────────────
+        const text = msg.text || msg.alternatives?.[0]?.text || '';
+        const sessionId = msg.sessionID || msg.sessionID || 'unknown';
+
+        if (text) {
+          console.log(`[bot-ws] User speech: "${text}"`);
+
+          // Forward to webhook handler for AI processing
+          fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'activities',
+              conversationId: sessionId,
+              caller: msg.caller || 'unknown',
+              activities: [{ type: 'message', text }],
+            }),
+          })
+            .then((res) => res.json() as Promise<{ activities?: { type?: string; text?: string; name?: string; parameters?: Record<string, unknown> }[] }>)
+            .then((response) => {
+              // Send TTS response back via WebSocket
+              if (response.activities) {
+                for (const activity of response.activities) {
+                  if (activity.type === 'message' && activity.text) {
+                    ws.send(JSON.stringify({
+                      message: 'PlayPrompt',
+                      sessionID: sessionId,
+                      text: activity.text,
+                    }));
+                  }
+                  if (activity.type === 'event' && activity.name === 'transfer') {
+                    ws.send(JSON.stringify({
+                      message: 'Transfer',
+                      sessionID: sessionId,
+                      target: activity.parameters?.target || '',
+                    }));
+                  }
+                }
+              }
+            })
+            .catch((err) => console.error('[bot-ws] Webhook processing error:', err));
+        }
+      }
+    } catch (err) {
+      console.error('[bot-ws] Error processing message:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('[bot-ws] VoiceAI WebSocket client disconnected');
+  });
+
+  ws.on('error', (err) => {
+    console.error('[bot-ws] WebSocket error:', err);
+  });
 });
+
+httpServer.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url || '', `http://${request.headers.host}`);
+  if (url.pathname === botWsPath) {
+    botWsServer.handleUpgrade(request, socket, head, (ws) => {
+      botWsServer.emit('connection', ws, request);
+    });
+  }
+});
+
 console.log(`[webhook] Bot WebSocket endpoint: ws://localhost:${PORT}${botWsPath}`);
-
-// Handle incoming conversations from VoiceAI Connect
-botApi.on('conversation', (conversation: BotConversationWebSocket, info: { request: import('http').IncomingMessage; initiateMessage: import('./websocket/types.js').ProtocolMessage }) => {
-  const convId = info.initiateMessage.conversationId || 'unknown';
-  console.log(`[bot-ws] New conversation started: ${convId}`);
-  emitCallEvent('call-started', convId, info.initiateMessage.caller || 'unknown');
-
-  // Handle activities from VoiceAI (transcribed speech, events)
-  conversation.on('activity', (activity: import('./websocket/types.js').BotActivity) => {
-    console.log(`[bot-ws] Activity received:`, activity);
-    // Process the activity similar to webhook handler
-    // For now, log it — the webhook handler is the primary processing path
-  });
-
-  conversation.on('end', () => {
-    console.log(`[bot-ws] Conversation ended: ${convId}`);
-    emitCallEvent('call-ended', convId, 'unknown');
-  });
-});
 
 // Middleware to parse JSON bodies (limit size to prevent JSON injection)
 app.use(express.json({ limit: '16kb' }));
