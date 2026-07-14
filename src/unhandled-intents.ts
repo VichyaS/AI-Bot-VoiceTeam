@@ -33,6 +33,14 @@ function readLogs(): UnhandledLogEntry[] {
   } catch (err) {
     console.error('[unhandled-intents] Failed to read log file:', err);
   }
+
+  // Fallback: load from CONFIG_unhandledLogs env var (Render cold-start)
+  const envLogs = process.env.CONFIG_unhandledLogs;
+  if (envLogs) {
+    try { return JSON.parse(envLogs); }
+    catch { console.warn('[unhandled-intents] Failed to parse CONFIG_unhandledLogs'); }
+  }
+
   return [];
 }
 

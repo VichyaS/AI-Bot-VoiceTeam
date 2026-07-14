@@ -82,6 +82,11 @@ function loadFromDisk(): AppConfig {
   if (process.env.CONFIG_mfaEnabled === 'false') envOverrides.mfaEnabled = false;
   if (process.env.CONFIG_transferProtocol) envOverrides.transferProtocol = process.env.CONFIG_transferProtocol;
   if (process.env.CONFIG_routingMode) envOverrides.routingMode = process.env.CONFIG_routingMode;
+  // Departments (JSON array)
+  if (process.env.CONFIG_departments) {
+    try { envOverrides.departments = JSON.parse(process.env.CONFIG_departments); }
+    catch { console.warn('[config] Invalid CONFIG_departments JSON'); }
+  }
 
   if (Object.keys(envOverrides).length > 0) {
     console.log(`[config] Loaded ${Object.keys(envOverrides).length} field(s) from individual CONFIG_* env vars`);
