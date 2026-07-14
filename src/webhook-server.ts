@@ -91,18 +91,21 @@ const httpServer = createServer(app);
 // Attach WebSocket server (noServer mode using HTTP upgrade)
 createLogWebSocketServer(httpServer);
 
-// ── Start ngrok tunnel (if enabled) ─────────────────────────────────
-const useNgrok = process.env.NGROK_AUTHTOKEN ? true : false;
-if (useNgrok) {
+// ── Start ngrok tunnel (if auth token is set) ──────────────────────
+const hasNgrokToken = !!process.env.NGROK_AUTHTOKEN;
+if (hasNgrokToken) {
   const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
+  emitInfo(`[ngrok] NGROK_AUTHTOKEN detected — starting TCP tunnel for SIP port ${sipPort}...`);
   startNgrokTunnel(sipPort)
     .then((info) => {
-      emitInfo(`[ngrok] SIP endpoint public URL: tcp://${info.url}`);
-      emitInfo(`[ngrok] Update SBC Proxy Set → Host: ${new URL(info.url).hostname}, Port: ${info.port}, Protocol: TCP`);
+      emitInfo(`[ngrok] ✅ TCP tunnel established: ${new URL(info.url).hostname}:${info.port}`);
+      emitInfo(`[ngrok] → SBC Proxy Set: Host=${new URL(info.url).hostname}, Port=${info.port}, Transport=TCP`);
     })
     .catch((err) => {
-      emitError(`[ngrok] Tunnel startup failed: ${err.message}. SIP/RTP will not be reachable.`);
+      emitError(`[ngrok] ❌ Tunnel startup failed: ${err.message}`);
     });
+} else {
+  console.log('[ngrok] NGROK_AUTHTOKEN not set — skipping tunnel (SIP/RTP will not be reachable)');
 }
 
 // ── AudioCodes Bot API WebSocket Server ────────────────────────────
