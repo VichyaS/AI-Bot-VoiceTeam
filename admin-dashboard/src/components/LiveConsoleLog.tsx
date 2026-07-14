@@ -135,8 +135,12 @@ export default function LiveConsoleLog() {
     userScrolledUp.current = false;
   };
 
-  const formatTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString('en-US', { hour12: false });
+  const formatTime = (iso: string) => {
+    const date = new Date(iso);
+    return isNaN(date.getTime())
+      ? '--:--:--'
+      : date.toLocaleTimeString('en-US', { hour12: false });
+  };
 
   return (
     <div className="rounded-xl border border-gray-700/50 bg-gray-950 shadow-lg overflow-hidden">

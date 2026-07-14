@@ -109,19 +109,14 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
         const caller = msg.caller || 'unknown';
         console.log(`[bot-ws] Session started: ${sessionId}, caller: ${caller}`);
         emitCallEvent('call-started', sessionId, caller);
+        emitInfo(`Incoming call from ${caller}`);
 
-        // NOTE: Do NOT reply to Start — SBC VoiceAI doesn't expect a response for it
-
-        // Also send webhook to process session start
-        fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'sessionStart',
-            conversationId: sessionId,
-            caller: caller,
-          }),
-        }).catch((err) => console.error('[bot-ws] Webhook sessionStart error:', err));
+        // Send welcome prompt via WebSocket
+        ws.send(JSON.stringify({
+          message: 'PlayPrompt',
+          sessionID: sessionId,
+          text: 'สวัสดีค่ะ ต้องการติดต่อใครคะ?',
+        }));
       }
 
       if (msg.message === 'KeepAlive') {
