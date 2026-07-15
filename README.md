@@ -52,11 +52,12 @@ voice-bot-api/
 │   ├── tts-cleaner.ts                 # ทำความสะอาดข้อความก่อน TTS
 │   ├── cache.ts                       # TTL Cache สำหรับ Entra ID + Departments
 │   ├── user-store.ts                  # อ่าน/เขียน users.json
-│   ├── ngrok-tunnel.ts                    # Tunnel Manager (ngrok TCP)
-├── sip-endpoint.ts                    # SIP Media Endpoint (RTP + ASR)
-├── speech-asr.ts                      # Azure Speech-to-Text processor
-├── cloudflare-tunnel.ts               # Cloudflare Tunnel (fallback)
-├── ssh-tunnel.ts                      # SSH Tunnel (serveo.net fallback)
+│   ├── ngrok-tunnel.ts                   # Ngrok TCP tunnel manager
+├── sip-endpoint.ts                   # SIP Media Endpoint (TCP/UDP)
+├── speech-asr.ts                     # Azure Speech-to-Text processor
+├── ngrok-tunnel.ts                   # Ngrok TCP tunnel manager
+├── sip-endpoint.ts                   # SIP Media Endpoint (TCP/UDP)
+├── speech-asr.ts                     # Azure Speech-to-Text processor
 │   ├── websocket/                     # Core SDK classes
 │   │   ├── bot-api.ts                 # BotApiWebSocket
 │   │   ├── bot-conversation.ts        # BotConversationWebSocket
@@ -90,7 +91,11 @@ voice-bot-api/
 ├── config.example.json                 # ตัวอย่าง config สำหรับ dev
 ├── users.json                          # ผู้ใช้ระบบ (ไม่ commit ขึ้น git)
 ├── users.example.json                  # ตัวอย่าง users
-├── render.yaml                         # Render Blueprint
+├── fly.toml                            # Fly.io deployment config
+├── Dockerfile                          # Docker image สำหรับ Fly.io
+├── docs/
+│   ├── sbc-config.md                   # คู่มือตั้งค่า SBC
+│   └── flyio-secrets-setup.sh          # ตัวอย่างคำสั่งตั้งค่า secrets
 └── package.json
 ```
 
@@ -142,7 +147,15 @@ cd admin-dashboard && npm run dev
 
 ---
 
-## 🚢 Deploy ขึ้น Render
+## 🚢 Deploy ขึ้น Fly.io
+
+### Prerequisites
+
+| รายการ | รายละเอียด |
+|---|---|
+| Ngrok Account | ฟรี ต้องมี credit card (ไม่คิดเงิน) — https://dashboard.ngrok.com |
+| Fly.io Account | ต้องเพิ่ม credit card (Trial $5 credit) |
+| Azure Speech | Speech Services resource |
 
 ### 1. Push ขึ้น GitHub
 
@@ -151,46 +164,95 @@ git remote add origin https://github.com/VichyaS/AI-Bot-VoiceTeam.git
 git push -u origin main
 ```
 
-### 2. สร้าง Web Service บน Render
+### 2. Deploy ไปยัง Fly.io
 
-- ไปที่ https://dashboard.render.com
-- กด **New → Web Service**
-- เชื่อมต่อ GitHub repo
-- ตั้งค่า:
+```bash
+# Login
+flyctl auth login
 
-| Field | ค่า |
+# Deploy
+flyctl deploy --app voiceteam-bot --remote-only
+
+# ดูสถานะ
+flyctl status --app voiceteam-bot
+# → https://voiceteam-bot.fly.dev
+```
+
+### 3. ตั้งค่า Environment Variables
+
+```bash
+# Auth
+flyctl secrets set JWT_SECRET=your-jwt-secret --app voiceteam-bot
+flyctl secrets set ADMIN_USERNAME=superadmin --app voiceteam-bot
+flyctl secrets set ADMIN_PASSWORD_HASH='$2b$10$...' --app voiceteam-bot
+
+# OpenRouter
+flyctl secrets set CONFIG_openRouterApiKey=sk-or-v1-... --app voiceteam-bot
+
+# Ngrok (required for SIP/RTP tunnel)
+flyctl secrets set NGROK_AUTHTOKEN=your_ngrok_token --app voiceteam-bot
+
+# Azure Speech (for ASR)
+flyctl secrets set CONFIG_speechKey=your_speech_key --app voiceteam-bot
+flyctl secrets set CONFIG_speechRegion=eastasia --app voiceteam-bot
+
+# Azure Entra ID (for directory lookup - optional)
+flyctl secrets set CONFIG_tenantId=... --app voiceteam-bot
+flyctl secrets set CONFIG_clientId=... --app voiceteam-bot
+flyctl secrets set CONFIG_clientSecret=... --app voiceteam-bot
+```
+
+> ⚠️ `CONFIG_*` env vars จะคงอยู่ถาวร 即使 redeploy ก็ไม่หาย
+> Config อื่นๆ สามารถตั้งค่าผ่าน Admin Dashboard ได้
+
+### 4. ดู Ngrok Tunnel URL
+
+```bash
+flyctl logs --app voiceteam-bot
+# หา: [tunnel] ✅ TCP tunnel: 0.tcp.ap.ngrok.io:xxxxx
+```
+
+### 5. ตั้งค่า SBC
+
+ดูคู่มือละเอียดที่: **`docs/sbc-config.md`**
+
+| รายการ | ค่า |
 |---|---|
-| **Name** | `ac-bot-api` |
-| **Region** | `Singapore` |
-| **Runtime** | `Node` |
-| **Build Command** | `npm ci && npm run build:all` |
-| **Start Command** | `npm start` |
+| **Proxy Set → Host** | `0.tcp.ap.ngrok.io` (จาก Log) |
+| **Proxy Set → Port** | `xxxxx` (จาก Log) |
+| **Proxy Set → Transport** | `TCP` |
+| **IP Group** | `Bot-SIP-Endpoint` → Proxy Set ด้านบน |
+| **IP-to-IP Routing** | `4099 → Bot-SIP-Endpoint` |
+| **Voice.AI Connector URL** | `wss://voiceteam-bot.fly.dev/api/audiocodes/bot-ws` |
 
-### 3. Environment Variables
+### 6. Architecture
 
-| Variable | จำเป็น | คำอธิบาย |
-|---|---|---|
-| `JWT_SECRET` | ✅ | Generate ค่าสุ่ม |
-| `ADMIN_USERNAME` | ✅ | `superadmin` |
-| `ADMIN_PASSWORD_HASH` | ✅ | bcrypt hash ของ password |
-| `ADMIN_ROLE` | ✅ | `SUPER_ADMIN` |
-| `AZURE_TENANT_ID` | ⚠️ | Entra ID Tenant ID |
-| `AZURE_CLIENT_ID` | ⚠️ | App Registration Client ID |
-| `AZURE_CLIENT_SECRET` | ⚠️ | Client Secret |
-| `OPENROUTER_API_KEY` | ⚠️ | OpenRouter API Key |
-| `CONFIG_JSON` | ⚠️ | 🆕 JSON string ของ config ทั้งหมด (แก้อาการ Render Cold Start) |
+```mermaid
+flowchart LR
+    subgraph CALLER["📞 ผู้โทร"]
+        PHONE["IP Phone / MicroSIP"]
+    end
+    subgraph SBC["SBC VE 7.40"]
+        ROUTING["4099 → Bot-SIP-Endpoint"]
+        PROXY["Proxy Set: Bot-SIP-Server<br/>→ Ngrok TCP"]
+        CONN["Voice.AI Connector<br/>wss://voiceteam-bot.fly.dev"]
+    end
+    subgraph NGROK["Ngrok (ฟรี)"]
+        TCP["TCP Tunnel<br/>0.tcp.ap.ngrok.io:xxxxx"]
+    end
+    subgraph FLYIO["Fly.io Singapore"]
+        HTTP["🌐 Port 8080<br/>Webhook + Dashboard"]
+        SIP["📞 Port 5060 TCP/UDP<br/>SIP Media Endpoint"]
+        RTP["🎤 RTP Audio → ASR"]
+        AI["🧠 AI + Entra ID"]
+    end
 
-> **⚠️ Render Cold Start:** Render จะพัก Server ถ้าไม่มีเรียกใช้ 15 นาที (Spin Down) และ **ไฟล์ `config.json` จะหาย** ทุกครั้งที่ตื่นขึ้นมาใหม่
->
-> วิธีแก้: เปิด `https://ai-bot-voiceteam.onrender.com/api/admin/config/export` (ต้อง Login ก่อน) → copy JSON output → นำไปใส่ใน Environment Variable `CONFIG_JSON` บน Render Dashboard
-
-### 4. ตั้งค่า SBC
-
-หลัง Deploy เสร็จ Render จะให้ URL เช่น `https://ac-bot-api.onrender.com`
-
-ตั้งค่า SBC VE 7.40:
-- **Webhook URL:** `https://ac-bot-api.onrender.com/api/audiocodes/webhook`
-- **Admin Dashboard:** `https://ac-bot-api.onrender.com/`
+    PHONE -->|SIP| SBC
+    SBC -->|TCP| PROXY --> TCP --> SIP
+    SBC -->|wss://| CONN --> HTTP
+    SIP -->|Audio| RTP
+    RTP -->|Azure Speech| AI
+```
 
 ---
 
