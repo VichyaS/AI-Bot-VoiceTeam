@@ -69,7 +69,10 @@ export default function LiveConsoleLog() {
 
     ws.onmessage = (event) => {
       try {
-        const entry: LogEntry = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
+        // Skip call lifecycle events and alerts (handled by MonitorPage)
+        if (data._call || data._alert) return;
+        const entry: LogEntry = data;
         setLogs((prev) => [...prev.slice(-200), entry]);
       } catch {
         // ignore malformed
