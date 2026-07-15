@@ -123,26 +123,37 @@ export class SipMediaEndpoint extends EventEmitter {
     if (this.running) return;
     this.running = true;
 
-    // ── SIP UDP Socket ──────────────────────────────────────────
-    this.sipSocket = createSocket('udp4');
-    this.sipSocket.on('message', (msg, rinfo) => {
-      const text = msg.toString('utf-8');
-      const sipMsg = this.parseSipMessage(text);
+    try {
+      this.sipSocket = createSocket('udp4');
+      
+      this.sipSocket.on('message', (msg, rinfo) => {
+        const text = msg.toString('utf-8');
+        const sipMsg = this.parseSipMessage(text);
 
-      if (sipMsg.method === 'INVITE') {
-        this.handleInvite(sipMsg, rinfo.address, rinfo.port);
-      } else if (sipMsg.method === 'ACK') {
-        this.handleAck(sipMsg);
-      } else if (sipMsg.method === 'BYE') {
-        this.handleBye(sipMsg);
-      } else if (sipMsg.method === 'CANCEL') {
-        this.handleCancel(sipMsg);
-      }
-    });
+        if (sipMsg.method === 'INVITE') {
+          this.handleInvite(sipMsg, rinfo.address, rinfo.port);
+        } else if (sipMsg.method === 'ACK') {
+          this.handleAck(sipMsg);
+        } else if (sipMsg.method === 'BYE') {
+          this.handleBye(sipMsg);
+        } else if (sipMsg.method === 'CANCEL') {
+          this.handleCancel(sipMsg);
+        }
+      });
 
-    this.sipSocket.bind(this.sipPort, '0.0.0.0', () => {
-      emitInfo(`[SIP] Media endpoint listening on UDP port ${this.sipPort}`);
-    });
+      this.sipSocket.on('error', (err: any) => {
+        console.error(`[SIP] Socket error: ${err.message}`);
+        emitError(`[SIP] Socket error: ${err.message}`);
+      });
+
+      this.sipSocket.bind(this.sipPort, '0.0.0.0', () => {
+        emitInfo(`[SIP] Media endpoint listening on UDP port ${this.sipPort}`);
+      });
+    } catch (err: any) {
+      console.error(`[SIP] Failed to start: ${err.message}`);
+      emitError(`[SIP] Failed to start: ${err.message}`);
+      this.running = false;
+    }
   }
 
   close(): void {
