@@ -86,7 +86,9 @@ app.use(helmet({
 app.disable('x-powered-by');
 
 // Trust proxy — required for Fly.io and Render (behind load balancers)
-app.set('trust proxy', true);
+// Set to 1 so only the first hop (the load balancer) is trusted,
+// preventing IP-based rate-limit bypass.
+app.set('trust proxy', 1);
 
 // Create a single HTTP server manually so we can attach WebSocket
 const httpServer = createServer(app);
