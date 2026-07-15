@@ -85,6 +85,9 @@ app.use(helmet({
 }));
 app.disable('x-powered-by');
 
+// Trust proxy — required for Fly.io and Render (behind load balancers)
+app.set('trust proxy', true);
+
 // Create a single HTTP server manually so we can attach WebSocket
 const httpServer = createServer(app);
 
