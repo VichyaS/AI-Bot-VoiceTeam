@@ -5,7 +5,7 @@
 [![React](https://img.shields.io/badge/react-19-blue)](https://react.dev)
 [![Tailwind](https://img.shields.io/badge/tailwind-4-cyan)](https://tailwindcss.com)
 
-ระบบ IVR Voice Bot อัจฉริยะที่ใช้ AI (OpenRouter) ในการวิเคราะห์คำพูดภาษาไทย เพื่อค้นหาพนักงานจาก Microsoft Entra ID และโอนสายอัตโนมัติผ่าน AudioCodes SBC
+ระบบ IVR Voice Bot อัจฉริยะที่ใช้ AI (OpenRouter) ในการวิเคราะห์คำพูดภาษาไทย เพื่อค้นหาพนักงานจาก Microsoft Entra ID และโอนสายอัตโนมัติผ่าน AudioCodes SBC — Deployed on Fly.io 🚀
 
 ---
 
