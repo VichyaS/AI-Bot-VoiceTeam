@@ -335,20 +335,15 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // Build 200 OK response with SDP
-    // Use the SBC's IP (from the Via header) so SBC acts as media proxy.
-    // This prevents RTP from being sent to Fly.io's private IP.
-    let sbcIp = '127.0.0.1';
-    const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
-    if (viaMatch) sbcIp = viaMatch[1];
-    
+    // ── Build SDP — Use m=audio 0 to tell SBC not to send RTP to Bot ──
+    // Bot cannot receive RTP audio through Ngrok TCP tunnel.
+    // SBC will keep RTP flowing internally between caller and its own media.
     const sdp = [
       'v=0',
-      `o=- 0 0 IN IP4 ${sbcIp}`,
+      'o=- 0 0 IN IP4 0.0.0.0',
       's=SBC Bot Media',
-      `c=IN IP4 ${sbcIp}`,
       't=0 0',
-      `m=audio ${this.sipPort} RTP/AVP 0`,
+      'm=audio 0 RTP/AVP 0',
       'a=rtpmap:0 PCMU/8000',
       'a=sendrecv',
       '',
@@ -361,7 +356,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `To: ${to};tag=${tag}`,
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 INVITE'}`,
-      `Contact: <sip:bot@${sbcIp}:${this.sipPort}>`,
+      `Contact: <sip:bot@${remoteAddr}:${this.sipPort}>`,
       `Content-Type: application/sdp`,
       `Content-Length: ${Buffer.byteLength(sdp)}`,
       '',
