@@ -335,21 +335,19 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // ── Build SDP with valid media but marked inactive ────────────
-    // SBC rejects m=audio 0. Use real port + a=inactive so SBC
-    // accepts the SDP but doesn't send RTP to Bot.
-    let sdpIp = '0.0.0.0';
-    const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
-    if (viaMatch) sdpIp = viaMatch[1];
+    // ── Build SDP — RTP goes to loopback, a=sendrecv prevents hold ──
+    // SBC will send RTP to 127.0.0.1:myPort — silently dropped.
+    // But a=sendrecv ensures SBC doesn't put call on hold,
+    // preventing caller from sending REINVITE that would fail.
     const sdp = [
       'v=0',
-      `o=- 0 0 IN IP4 ${sdpIp}`,
+      'o=- 0 0 IN IP4 127.0.0.1',
       's=SBC Bot Media',
-      `c=IN IP4 ${sdpIp}`,
+      'c=IN IP4 127.0.0.1',
       't=0 0',
       `m=audio ${myPort} RTP/AVP 0`,
       'a=rtpmap:0 PCMU/8000',
-      'a=inactive',
+      'a=sendrecv',
       '',
     ].join('\r\n');
 
