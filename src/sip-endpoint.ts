@@ -10,6 +10,7 @@
  */
 
 import { createSocket } from 'node:dgram';
+import { createServer } from 'node:net';
 import { EventEmitter } from 'node:events';
 import { getConfig } from './config-manager.js';
 import { emitInfo, emitAi, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
@@ -33,6 +34,8 @@ interface ActiveCall {
   seq: number;
   remoteAddr: string;
   remotePort: number;
+  transport: 'udp' | 'tcp';
+  tcpSocket?: import('node:net').Socket;
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -102,6 +105,7 @@ export class SipMediaEndpoint extends EventEmitter {
   private sipPort: number;
   private rtpPortBase: number;
   private sipSocket!: ReturnType<typeof createSocket>;
+  private tcpServer!: ReturnType<typeof createServer>;
   private rtpSockets: Map<string, ReturnType<typeof createSocket>> = new Map();
   private calls: Map<string, ActiveCall> = new Map();
   private running = false;
@@ -124,30 +128,52 @@ export class SipMediaEndpoint extends EventEmitter {
     this.running = true;
 
     try {
+      // ── UDP Socket (for local SIP) ──────────────────────────────
       this.sipSocket = createSocket('udp4');
       
       this.sipSocket.on('message', (msg, rinfo) => {
-        const text = msg.toString('utf-8');
-        const sipMsg = this.parseSipMessage(text);
-
-        if (sipMsg.method === 'INVITE') {
-          this.handleInvite(sipMsg, rinfo.address, rinfo.port);
-        } else if (sipMsg.method === 'ACK') {
-          this.handleAck(sipMsg);
-        } else if (sipMsg.method === 'BYE') {
-          this.handleBye(sipMsg);
-        } else if (sipMsg.method === 'CANCEL') {
-          this.handleCancel(sipMsg);
-        }
+        this.handleSipData(msg.toString('utf-8'), rinfo.address, rinfo.port);
       });
 
       this.sipSocket.on('error', (err: any) => {
-        console.error(`[SIP] Socket error: ${err.message}`);
-        emitError(`[SIP] Socket error: ${err.message}`);
+        console.error(`[SIP] UDP error: ${err.message}`);
+        emitError(`[SIP] UDP error: ${err.message}`);
       });
 
       this.sipSocket.bind(this.sipPort, '0.0.0.0', () => {
-        emitInfo(`[SIP] Media endpoint listening on UDP port ${this.sipPort}`);
+        emitInfo(`[SIP] UDP endpoint listening on port ${this.sipPort}`);
+      });
+
+      // ── TCP Server (for Ngrok tunnel — SBC sends TCP via Ngrok) ─
+      this.tcpServer = createServer((socket) => {
+        const remoteAddr = socket.remoteAddress || '0.0.0.0';
+        const remotePort = socket.remotePort || 0;
+        console.log(`[SIP] TCP connection from ${remoteAddr}:${remotePort}`);
+
+        let buffer = '';
+        socket.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          // SIP messages end with \r\n\r\n (or double CRLF after Content-Length)
+          if (buffer.includes('\r\n\r\n') || buffer.includes('\n\n')) {
+            this.handleSipData(buffer, remoteAddr, remotePort, socket);
+            buffer = '';
+          }
+        });
+        socket.on('error', (err) => {
+          console.error(`[SIP] TCP socket error: ${err.message}`);
+        });
+        socket.on('close', () => {
+          console.log(`[SIP] TCP connection closed: ${remoteAddr}:${remotePort}`);
+        });
+      });
+
+      this.tcpServer.on('error', (err: any) => {
+        console.error(`[SIP] TCP server error: ${err.message}`);
+        emitError(`[SIP] TCP server error: ${err.message}`);
+      });
+
+      this.tcpServer.listen(this.sipPort, '0.0.0.0', () => {
+        emitInfo(`[SIP] TCP endpoint listening on port ${this.sipPort}`);
       });
     } catch (err: any) {
       console.error(`[SIP] Failed to start: ${err.message}`);
@@ -156,9 +182,23 @@ export class SipMediaEndpoint extends EventEmitter {
     }
   }
 
+  private handleSipData(text: string, remoteAddr: string, remotePort: number, tcpSocket?: import('node:net').Socket): void {
+    const sipMsg = this.parseSipMessage(text);
+    if (sipMsg.method === 'INVITE') {
+      this.handleInvite(sipMsg, remoteAddr, remotePort, tcpSocket);
+    } else if (sipMsg.method === 'ACK') {
+      this.handleAck(sipMsg);
+    } else if (sipMsg.method === 'BYE') {
+      this.handleBye(sipMsg);
+    } else if (sipMsg.method === 'CANCEL') {
+      this.handleCancel(sipMsg);
+    }
+  }
+
   close(): void {
     this.running = false;
     this.sipSocket?.close();
+    this.tcpServer?.close();
     for (const [id, sock] of this.rtpSockets) {
       sock.close();
     }
@@ -228,7 +268,7 @@ export class SipMediaEndpoint extends EventEmitter {
     return { method, code, headers, body };
   }
 
-  private handleInvite(msg: SipMessage, remoteAddr: string, remotePort: number): void {
+  private handleInvite(msg: SipMessage, remoteAddr: string, remotePort: number, tcpSocket?: import('node:net').Socket): void {
     const callId = msg.headers['call-id'] || `call-${Date.now()}`;
     const from = msg.headers['from'] || '';
     const to = msg.headers['to'] || '';
@@ -246,6 +286,7 @@ export class SipMediaEndpoint extends EventEmitter {
     const tag = `bot-${Date.now()}`;
     const sessionId = callId;
 
+    const transport = tcpSocket ? 'tcp' : 'udp';
     const call: ActiveCall = {
       sessionId,
       caller,
@@ -256,6 +297,8 @@ export class SipMediaEndpoint extends EventEmitter {
       seq: 1,
       remoteAddr,
       remotePort,
+      transport,
+      tcpSocket,
     };
     this.calls.set(sessionId, call);
 
