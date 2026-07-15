@@ -63,7 +63,7 @@ setInterval(checkSecretExpiry, 6 * 60 * 60 * 1000);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
-const PORT = process.env.PORT || 8081;
+const PORT = parseInt(process.env.PORT || '8080', 10);
 
 // ── Healthcheck endpoint (prevents Render spin-down) ────────────────
 app.get('/api/health', (_req: Request, res: Response) => {
