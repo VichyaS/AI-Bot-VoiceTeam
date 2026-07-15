@@ -52,7 +52,11 @@ voice-bot-api/
 │   ├── tts-cleaner.ts                 # ทำความสะอาดข้อความก่อน TTS
 │   ├── cache.ts                       # TTL Cache สำหรับ Entra ID + Departments
 │   ├── user-store.ts                  # อ่าน/เขียน users.json
-│   ├── test-route-router.ts           # API สำหรับทดสอบ routing
+│   ├── ngrok-tunnel.ts                    # Tunnel Manager (ngrok TCP)
+├── sip-endpoint.ts                    # SIP Media Endpoint (RTP + ASR)
+├── speech-asr.ts                      # Azure Speech-to-Text processor
+├── cloudflare-tunnel.ts               # Cloudflare Tunnel (fallback)
+├── ssh-tunnel.ts                      # SSH Tunnel (serveo.net fallback)
 │   ├── websocket/                     # Core SDK classes
 │   │   ├── bot-api.ts                 # BotApiWebSocket
 │   │   ├── bot-conversation.ts        # BotConversationWebSocket
