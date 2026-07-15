@@ -335,17 +335,21 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // ── Build SDP — Use m=audio 0 to tell SBC not to send RTP to Bot ──
-    // Bot cannot receive RTP audio through Ngrok TCP tunnel.
-    // SBC will keep RTP flowing internally between caller and its own media.
+    // ── Build SDP with valid media but marked inactive ────────────
+    // SBC rejects m=audio 0. Use real port + a=inactive so SBC
+    // accepts the SDP but doesn't send RTP to Bot.
+    let sdpIp = '0.0.0.0';
+    const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
+    if (viaMatch) sdpIp = viaMatch[1];
     const sdp = [
       'v=0',
-      'o=- 0 0 IN IP4 0.0.0.0',
+      `o=- 0 0 IN IP4 ${sdpIp}`,
       's=SBC Bot Media',
+      `c=IN IP4 ${sdpIp}`,
       't=0 0',
-      'm=audio 0 RTP/AVP 0',
+      `m=audio ${myPort} RTP/AVP 0`,
       'a=rtpmap:0 PCMU/8000',
-      'a=sendrecv',
+      'a=inactive',
       '',
     ].join('\r\n');
 
