@@ -6,12 +6,12 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --production && npm cache clean --force
+# Install ALL dependencies (including devDependencies for build)
+RUN npm ci && npm cache clean --force
 
 # Copy admin-dashboard package
 COPY admin-dashboard/package*.json admin-dashboard/
-RUN cd admin-dashboard && npm ci --production && npm cache clean --force
+RUN cd admin-dashboard && npm ci && npm cache clean --force
 
 # Copy source
 COPY . .
