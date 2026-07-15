@@ -95,13 +95,13 @@ createLogWebSocketServer(httpServer);
 const hasNgrokToken = !!process.env.NGROK_AUTHTOKEN || !!process.env.TUNNEL_TYPE;
 if (hasNgrokToken) {
   const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
-  console.log(`[tunnel] Tunnel token detected — starting tunnel for SIP port ${sipPort}...`);
-  emitInfo(`[tunnel] Starting tunnel for SIP port ${sipPort}...`);
+  console.log(`[tunnel] NGROK_AUTHTOKEN detected — starting TCP tunnel for SIP port ${sipPort}...`);
+  emitInfo(`[tunnel] Starting TCP tunnel for SIP port ${sipPort}...`);
   startTunnel(sipPort)
     .then((info) => {
-      console.log(`[tunnel] ✅ ${info.type} tunnel established: ${info.url}`);
-      console.log(`[tunnel] → SBC: Set Webhook URL to ${info.url}/api/audiocodes/webhook`);
-      emitInfo(`[tunnel] ✅ ${info.type} tunnel: ${info.url}`);
+      console.log(`[tunnel] ✅ TCP tunnel: ${new URL(info.url).hostname}:${info.port}`);
+      console.log(`[tunnel] → SBC Proxy Set: Host=${new URL(info.url).hostname}, Port=${info.port}, Transport=TCP`);
+      emitInfo(`[tunnel] ✅ TCP tunnel: ${new URL(info.url).hostname}:${info.port}`);
     })
     .catch((err) => {
       const msg = `[tunnel] ❌ Failed: ${err.message}`;
@@ -109,7 +109,7 @@ if (hasNgrokToken) {
       emitError(msg);
     });
 } else {
-  console.log('[tunnel] No tunnel token set — SIP/RTP will not be reachable from outside');
+  console.log('[tunnel] NGROK_AUTHTOKEN not set — SIP/RTP will not be reachable from outside');
 }
 
 // ── AudioCodes Bot API WebSocket Server ────────────────────────────
@@ -276,15 +276,13 @@ httpServer.on('upgrade', (request, socket, head) => {
 console.log(`[webhook] Bot WebSocket endpoint: ws://localhost:${PORT}${botWsPath}`);
 
 // ── SIP Media Endpoint ──────────────────────────────────────────────
-// Receives SIP calls + RTP audio directly from SBC for ASR processing.
-// SBC routes calls to this endpoint when VoiceAI is not available.
+// Receives SIP calls + RTP audio directly from SBC.
+// SBC routes calls to Bot-SIP-Endpoint via Ngrok TCP tunnel.
 const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
 const sipEndpoint = new SipMediaEndpoint(sipPort);
 sipEndpoint.listen();
 
-// Forward ASR-processed text to webhook handler
 sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
-  // Audio data received — feed to Azure Speech ASR
   const cfg = getConfig();
   if (cfg.speechKey && cfg.speechRegion) {
     let processor = asrProcessors.get(sessionId);
@@ -326,7 +324,6 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
       );
       asrProcessors.set(sessionId, processor);
     }
-    // Feed audio as Buffer (convert Int16Array to Buffer)
     const buf = Buffer.from(audioBuffer.buffer);
     processor.feedAudio(buf);
   }
@@ -335,10 +332,7 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
 sipEndpoint.onCallEnded = (sessionId) => {
   emitCallEvent('call-ended', sessionId, 'sip-caller');
   const processor = asrProcessors.get(sessionId);
-  if (processor) {
-    processor.stop();
-    asrProcessors.delete(sessionId);
-  }
+  if (processor) { processor.stop(); asrProcessors.delete(sessionId); }
 };
 
 console.log(`[webhook] SIP Media Endpoint listening on UDP port ${sipPort}`);

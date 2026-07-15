@@ -1,5 +1,5 @@
 /**
- * Tunnel Manager — สร้าง public tunnel via ngrok (HTTP, ฟรี)
+ * Tunnel Manager — ngrok TCP tunnel (ต้องมี credit card แต่ฟรี ไม่คิดเงิน)
  * 
  * Environment:
  *   NGROK_AUTHTOKEN — ngrok auth token (required)
@@ -9,6 +9,7 @@
 import { emitInfo, emitError } from './system-logger.js';
 
 let tunnelUrl = '';
+let tunnelPort = 0;
 
 export interface TunnelInfo {
   url: string;
@@ -21,16 +22,19 @@ export async function startTunnel(sipPort: number): Promise<TunnelInfo> {
   const token = process.env.NGROK_AUTHTOKEN;
   if (!token) throw new Error('NGROK_AUTHTOKEN not set');
 
-  console.log('[tunnel] Starting ngrok HTTP tunnel (free)...');
-  const t = await ngrok.connect({ addr: sipPort, proto: 'http', authtoken: token });
+  console.log('[tunnel] Starting ngrok TCP tunnel (credit card on file — no charge)...');
+  const t = await ngrok.connect({ addr: sipPort, proto: 'tcp', authtoken: token });
   tunnelUrl = t.url() || '';
+  const parsed = new URL(tunnelUrl);
+  tunnelPort = parseInt(parsed.port, 10);
 
-  console.log(`[tunnel] ✅ ngrok tunnel: ${tunnelUrl}`);
-  console.log(`[tunnel] → Voice.AI Connector URL: wss://${new URL(tunnelUrl).hostname}/api/audiocodes/bot-ws`);
-  console.log(`[tunnel] → Webhook URL: ${tunnelUrl}/api/audiocodes/webhook`);
+  console.log(`[tunnel] ✅ TCP tunnel: ${parsed.hostname}:${tunnelPort}`);
+  console.log(`[tunnel] → SBC Proxy Set: Host=${parsed.hostname}, Port=${tunnelPort}, Transport=TCP`);
+  console.log(`[tunnel] → Webhook URL: https://ai-bot-voiceteam.onrender.com/api/audiocodes/webhook`);
 
-  return { url: tunnelUrl, port: 443, type: 'ngrok' };
+  return { url: tunnelUrl, port: tunnelPort, type: 'ngrok' };
 }
 
-export function stopTunnel(): void { /* ngrok cleans up on exit */ }
+export function stopTunnel(): void {}
 export function getTunnelUrl(): string { return tunnelUrl; }
+export function getTunnelPort(): number { return tunnelPort; }

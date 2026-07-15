@@ -31,6 +31,8 @@ interface ActiveCall {
   callId: string;
   tag: string;
   seq: number;
+  remoteAddr: string;
+  remotePort: number;
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -241,6 +243,8 @@ export class SipMediaEndpoint extends EventEmitter {
       callId,
       tag,
       seq: 1,
+      remoteAddr,
+      remotePort,
     };
     this.calls.set(sessionId, call);
 
