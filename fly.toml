@@ -1,5 +1,5 @@
 # fly.toml — Fly.io deployment config
-app = "ai-bot-voiceteam"
+app = "voiceteam-bot"
 primary_region = "sin"
 
 [build]
@@ -21,13 +21,3 @@ primary_region = "sin"
   cpu_kind = "shared"
   cpus = 1
   memory_mb = 512
-
-[[services]]
-  protocol = "udp"
-  internal_port = 5060
-  ports = ["5060"]
-
-  [services.concurrency]
-    type = "connections"
-    hard_limit = 100
-    soft_limit = 50
