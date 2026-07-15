@@ -11,6 +11,7 @@
 
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { EventEmitter } from 'node:events';
 import { getConfig } from './config-manager.js';
 import { emitInfo, emitAi, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
@@ -231,6 +232,15 @@ export class SipMediaEndpoint extends EventEmitter {
   // ── Private methods ──────────────────────────────────────────
 
   private getLocalIp(): string {
+    // Get the actual machine IP (not 127.0.0.1) so SBC can send RTP audio
+    const nets = networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
+      }
+    }
     return '127.0.0.1';
   }
 
@@ -326,11 +336,12 @@ export class SipMediaEndpoint extends EventEmitter {
     rtpSocket.bind(myPort, '0.0.0.0');
 
     // Build 200 OK response with SDP
+    const localIp = this.getLocalIp();
     const sdp = [
       'v=0',
-      `o=- 0 0 IN IP4 127.0.0.1`,
+      `o=- 0 0 IN IP4 ${localIp}`,
       's=SBC Bot Media',
-      `c=IN IP4 127.0.0.1`,
+      `c=IN IP4 ${localIp}`,
       't=0 0',
       `m=audio ${myPort} RTP/AVP 0 8`,
       'a=rtpmap:0 PCMU/8000',
@@ -346,14 +357,21 @@ export class SipMediaEndpoint extends EventEmitter {
       `To: ${to};tag=${tag}`,
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 INVITE'}`,
-      `Contact: <sip:bot@127.0.0.1:${this.sipPort}>`,
+      `Contact: <sip:bot@${localIp}:${this.sipPort}>`,
       `Content-Type: application/sdp`,
       `Content-Length: ${Buffer.byteLength(sdp)}`,
       '',
       sdp,
     ].join('\r\n');
 
-    this.sipSocket.send(Buffer.from(response), remotePort, remoteAddr);
+    const responseBuf = Buffer.from(response);
+    if (tcpSocket) {
+      // Send via TCP (Ngrok tunnel)
+      tcpSocket.write(responseBuf);
+    } else {
+      // Send via UDP
+      this.sipSocket.send(responseBuf, remotePort, remoteAddr);
+    }
     emitInfo(`[SIP] Sent 200 OK for call ${callId}`);
   }
 
