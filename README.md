@@ -144,6 +144,26 @@ cd admin-dashboard && npm run dev
 
 This repository is intended to be deployed on a standard host or VM with direct access to the SIP and RTP ports. Configure the environment variables and network rules according to your target platform.
 
+### Deployment options
+
+- AWS: see [docs/aws-install-th.md](docs/aws-install-th.md)
+- Azure: see [docs/azure-install-th.md](docs/azure-install-th.md)
+- Hostinger: see [docs/hostinger-install-th.md](docs/hostinger-install-th.md)
+
+### Recommended deployment paths
+
+```mermaid
+flowchart LR
+    subgraph Production["Production targets"]
+        AWS["AWS EC2 / ECS"]
+        AZURE["Azure VM / App Service"]
+        HOST["Hostinger VPS / Shared"]
+    end
+    SBC["SBC / SIP Phone"] -->|SIP + RTP| AWS
+    SBC -->|SIP + RTP| AZURE
+    SBC -->|HTTP/WebSocket| HOST
+```
+
 ---
 
 ## 🔌 API Endpoints
