@@ -104,9 +104,12 @@ if (hasNgrokToken) {
   emitInfo(`[tunnel] Starting TCP tunnel for SIP port ${sipPort}...`);
   startTunnel(sipPort)
     .then((info) => {
-      console.log(`[tunnel] ✅ TCP tunnel: ${new URL(info.url).hostname}:${info.port}`);
-      console.log(`[tunnel] → SBC Proxy Set: Host=${new URL(info.url).hostname}, Port=${info.port}, Transport=TCP`);
-      emitInfo(`[tunnel] ✅ TCP tunnel: ${new URL(info.url).hostname}:${info.port}`);
+      const hostname = new URL(info.url).hostname;
+      console.log(`[tunnel] ✅ TCP tunnel: ${hostname}:${info.port}`);
+      console.log(`[tunnel] → SBC Proxy Set: Host=${hostname}, Port=${info.port}, Transport=TCP`);
+      emitInfo(`[tunnel] ✅ TCP tunnel: ${hostname}:${info.port}`);
+      // Set tunnel info on SIP endpoint so Contact header points through tunnel
+      sipEndpoint.setTunnel(hostname, info.port);
     })
     .catch((err) => {
       const msg = `[tunnel] ❌ Failed: ${err.message}`;

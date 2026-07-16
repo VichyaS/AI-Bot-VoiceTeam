@@ -113,6 +113,8 @@ export class SipMediaEndpoint extends EventEmitter {
   private running = false;
   private ssrcCounter = 1000;
   private nextRtpPort = 0;
+  private tunnelHostname = '';
+  private tunnelPort = 0;
 
   // ASR buffer
   public onAudioData?: (sessionId: string, audioBuffer: Int16Array) => void;
@@ -123,6 +125,13 @@ export class SipMediaEndpoint extends EventEmitter {
     this.sipPort = sipPort;
     this.rtpPortBase = rtpPortBase;
     this.nextRtpPort = rtpPortBase;
+  }
+
+  /** Set the ngrok tunnel hostname:port so the Contact header points
+   *  through the tunnel, avoiding SBC loopback to its own IP. */
+  setTunnel(hostname: string, port: number): void {
+    this.tunnelHostname = hostname;
+    this.tunnelPort = port;
   }
 
   listen(): void {
@@ -214,9 +223,16 @@ export class SipMediaEndpoint extends EventEmitter {
     if (!call) return;
 
     const transportParam = call.transport === 'tcp' ? ';transport=tcp' : '';
-    // For TCP calls, use the SBC's IP in Contact so the SBC routes
-    // in-dialog requests through its ProxySet back to us.
-    const contactHost = call.sbcIp || this.getLocalIp();
+    // For TCP calls, use the tunnel hostname in Contact so the SBC
+    // routes in-dialog requests through its ProxySet back to us.
+    let contactHost = this.getLocalIp();
+    let contactPort = this.sipPort;
+    if (call.transport === 'tcp' && this.tunnelHostname) {
+      contactHost = this.tunnelHostname;
+      contactPort = this.tunnelPort;
+    } else if (call.sbcIp) {
+      contactHost = call.sbcIp;
+    }
     const referMsg = [
       `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
       `Via: SIP/2.0/${call.transport === 'tcp' ? 'TCP' : 'UDP'} ${this.getLocalIp()}:${this.sipPort}`,
@@ -225,7 +241,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `Call-ID: ${call.callId}`,
       `CSeq: ${++call.seq} REFER`,
       `Refer-To: <${targetSipUri}>`,
-      `Contact: <sip:bot@${contactHost}:${this.sipPort}${transportParam}>`,
+      `Contact: <sip:bot@${contactHost}:${contactPort}${transportParam}>`,
       'Content-Length: 0',
       '',
     ].join('\r\n');
@@ -368,10 +384,19 @@ export class SipMediaEndpoint extends EventEmitter {
       '',
     ].join('\r\n');
 
-    // For TCP connections (via ngrok), remoteAddr is 127.0.0.1.
-    // Use the SBC's own IP from the Via header so the SBC routes
-    // in-dialog requests (ACK, BYE) through its ProxySet back to us.
-    const contactHost = sbcIp || remoteAddr;
+    // For TCP connections via ngrok tunnel:
+    // Use the tunnel hostname in Contact so the SBC routes in-dialog
+    // requests (ACK, BYE) through the ProxySet back to us.
+    // Without this, the SBC sends to its own IP and loops back to itself.
+    let contactHost = remoteAddr;
+    let contactPort = this.sipPort;
+    if (tcpSocket && this.tunnelHostname) {
+      contactHost = this.tunnelHostname;
+      contactPort = this.tunnelPort;
+    } else if (tcpSocket && sbcIp) {
+      // Fallback: use SBC's IP from Via header (may loopback to SBC)
+      contactHost = sbcIp;
+    }
 
     const response = [
       `SIP/2.0 200 OK`,
@@ -380,7 +405,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `To: ${to};tag=${tag}`,
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 INVITE'}`,
-      `Contact: <sip:bot@${contactHost}:${this.sipPort}${tcpSocket ? ';transport=tcp' : ''}>`,
+      `Contact: <sip:bot@${contactHost}:${contactPort}${tcpSocket ? ';transport=tcp' : ''}>`,
       `Content-Type: application/sdp`,
       `Content-Length: ${Buffer.byteLength(sdp)}`,
       '',
