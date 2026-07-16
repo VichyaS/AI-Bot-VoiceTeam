@@ -202,7 +202,7 @@ flyctl secrets set CONFIG_clientId=... --app voiceteam-bot
 flyctl secrets set CONFIG_clientSecret=... --app voiceteam-bot
 ```
 
-> ⚠️ `CONFIG_*` env vars จะคงอยู่ถาวร 即使 redeploy ก็ไม่หาย
+> ⚠️ `CONFIG_*` env vars จะคงอยู่ถาวร redeploy ก็ไม่หาย
 > Config อื่นๆ สามารถตั้งค่าผ่าน Admin Dashboard ได้
 
 ### 4. ดู Ngrok Tunnel URL
