@@ -32,7 +32,7 @@ import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
-import { startTunnel, stopTunnel, getTunnelUrl } from './ngrok-tunnel.js';
+import { startTunnel, stopTunnel, getTunnelUrl, getHttpTunnelUrl } from './ngrok-tunnel.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
