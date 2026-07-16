@@ -37,6 +37,7 @@ interface ActiveCall {
   remotePort: number;
   transport: 'udp' | 'tcp';
   tcpSocket?: import('node:net').Socket;
+  sbcIp?: string; // SBC's real IP (from Via header), for Contact header in TCP calls
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -213,11 +214,9 @@ export class SipMediaEndpoint extends EventEmitter {
     if (!call) return;
 
     const transportParam = call.transport === 'tcp' ? ';transport=tcp' : '';
-    // For TCP calls, use the SBC's IP (from call.remoteAddr) in Contact
-    // so the SBC routes in-dialog requests through its ProxySet.
-    const contactHost = (call.transport === 'tcp' && call.remoteAddr !== '127.0.0.1')
-      ? call.remoteAddr
-      : this.getLocalIp();
+    // For TCP calls, use the SBC's IP in Contact so the SBC routes
+    // in-dialog requests through its ProxySet back to us.
+    const contactHost = call.sbcIp || this.getLocalIp();
     const referMsg = [
       `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
       `Via: SIP/2.0/${call.transport === 'tcp' ? 'TCP' : 'UDP'} ${this.getLocalIp()}:${this.sipPort}`,
@@ -308,6 +307,12 @@ export class SipMediaEndpoint extends EventEmitter {
     const sessionId = callId;
 
     const transport = tcpSocket ? 'tcp' : 'udp';
+    // Extract SBC's real IP from Via header (for TCP/ngrok calls)
+    let sbcIp: string | undefined;
+    if (tcpSocket) {
+      const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
+      if (viaMatch) sbcIp = viaMatch[1];
+    }
     const call: ActiveCall = {
       sessionId,
       caller,
@@ -320,6 +325,7 @@ export class SipMediaEndpoint extends EventEmitter {
       remotePort,
       transport,
       tcpSocket,
+      sbcIp,
     };
     this.calls.set(sessionId, call);
 
@@ -365,11 +371,7 @@ export class SipMediaEndpoint extends EventEmitter {
     // For TCP connections (via ngrok), remoteAddr is 127.0.0.1.
     // Use the SBC's own IP from the Via header so the SBC routes
     // in-dialog requests (ACK, BYE) through its ProxySet back to us.
-    let contactHost = remoteAddr;
-    if (tcpSocket) {
-      const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
-      if (viaMatch) contactHost = viaMatch[1];
-    }
+    const contactHost = sbcIp || remoteAddr;
 
     const response = [
       `SIP/2.0 200 OK`,
