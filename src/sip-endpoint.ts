@@ -212,20 +212,26 @@ export class SipMediaEndpoint extends EventEmitter {
     const call = this.calls.get(sessionId);
     if (!call) return;
 
+    const transportParam = call.transport === 'tcp' ? ';transport=tcp' : '';
     const referMsg = [
       `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
-      `Via: SIP/2.0/UDP ${this.getLocalIp()}:${this.sipPort}`,
+      `Via: SIP/2.0/${call.transport === 'tcp' ? 'TCP' : 'UDP'} ${this.getLocalIp()}:${this.sipPort}`,
       `From: <sip:bot@${this.getLocalIp()}>;tag=${call.tag}`,
       `To: <sip:${call.callee}@${this.getLocalIp()}>`,
       `Call-ID: ${call.callId}`,
       `CSeq: ${++call.seq} REFER`,
       `Refer-To: <${targetSipUri}>`,
-      `Contact: <sip:bot@${this.getLocalIp()}:${this.sipPort}>`,
+      `Contact: <sip:bot@${this.getLocalIp()}:${this.sipPort}${transportParam}>`,
       'Content-Length: 0',
       '',
     ].join('\r\n');
 
-    this.sipSocket.send(Buffer.from(referMsg), this.sipPort, '127.0.0.1');
+    const buf = Buffer.from(referMsg);
+    if (call.tcpSocket && !call.tcpSocket.destroyed) {
+      call.tcpSocket.write(buf);
+    } else {
+      this.sipSocket.send(buf, call.remotePort, call.remoteAddr);
+    }
     emitTransfer(`[SIP] Sent REFER to ${targetSipUri}`);
   }
 
@@ -358,7 +364,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `To: ${to};tag=${tag}`,
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 INVITE'}`,
-      `Contact: <sip:bot@${remoteAddr}:${this.sipPort}>`,
+      `Contact: <sip:bot@${remoteAddr}:${this.sipPort}${tcpSocket ? ';transport=tcp' : ''}>`,
       `Content-Type: application/sdp`,
       `Content-Length: ${Buffer.byteLength(sdp)}`,
       '',
@@ -385,10 +391,16 @@ export class SipMediaEndpoint extends EventEmitter {
   private handleBye(msg: SipMessage): void {
     const callId = msg.headers['call-id'] || '';
     const call = this.calls.get(callId);
+    let remoteAddr = '127.0.0.1';
+    let remotePort = this.sipPort;
+    let tcpSocket: import('node:net').Socket | undefined;
     if (call) {
       emitInfo(`[SIP] Call ended: ${callId}`);
       emitCallEvent('call-ended', callId, call.caller);
       if (this.onCallEnded) this.onCallEnded(callId);
+      remoteAddr = call.remoteAddr;
+      remotePort = call.remotePort;
+      tcpSocket = call.tcpSocket;
 
       // Cleanup
       const rtpSock = this.rtpSockets.get(callId);
@@ -396,7 +408,7 @@ export class SipMediaEndpoint extends EventEmitter {
       this.calls.delete(callId);
     }
 
-    // Send 200 OK for BYE
+    // Send 200 OK for BYE — reuse the same transport as the original INVITE
     const response = [
       `SIP/2.0 200 OK`,
       `Via: ${msg.headers.via || ''}`,
@@ -408,7 +420,12 @@ export class SipMediaEndpoint extends EventEmitter {
       '',
     ].join('\r\n');
 
-    this.sipSocket.send(Buffer.from(response), this.sipPort, '127.0.0.1');
+    const responseBuf = Buffer.from(response);
+    if (tcpSocket && !tcpSocket.destroyed) {
+      tcpSocket.write(responseBuf);
+    } else {
+      this.sipSocket.send(responseBuf, remotePort, remoteAddr);
+    }
   }
 
   private handleCancel(msg: SipMessage): void {
@@ -420,5 +437,19 @@ export class SipMediaEndpoint extends EventEmitter {
       if (rtpSock) { rtpSock.close(); this.rtpSockets.delete(callId); }
       this.calls.delete(callId);
     }
+
+    // Send 200 OK for CANCEL per RFC 3261
+    const response = [
+      `SIP/2.0 200 OK`,
+      `Via: ${msg.headers.via || ''}`,
+      `From: ${msg.headers.from || ''}`,
+      `To: ${msg.headers.to || ''}`,
+      `Call-ID: ${callId}`,
+      `CSeq: ${msg.headers.cseq || '1 CANCEL'}`,
+      'Content-Length: 0',
+      '',
+    ].join('\r\n');
+
+    this.sipSocket.send(Buffer.from(response), this.sipPort, '127.0.0.1');
   }
 }
