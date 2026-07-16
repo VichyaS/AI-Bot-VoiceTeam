@@ -1,7 +1,13 @@
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production';
+function getJwtSecret(): string | undefined {
+  const secret = process.env.JWT_SECRET;
+  if (secret && secret.length >= 32) {
+    return secret;
+  }
+  return undefined;
+}
 
 export type UserRole = 'SUPER_ADMIN' | 'IVR_MANAGER';
 
@@ -14,15 +20,23 @@ export interface JwtPayload {
  * Sign a JWT for the given user. Token expires in 2 hours.
  */
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' });
+  const secret = getJwtSecret();
+  if (!secret) {
+    throw new Error('JWT_SECRET must be set to a secret value of at least 32 characters in production.');
+  }
+  return jwt.sign(payload, secret, { expiresIn: '2h' });
 }
 
 /**
  * Verify and decode a JWT. Returns the payload or null.
  */
 export function verifyToken(token: string): JwtPayload | null {
+  const secret = getJwtSecret();
+  if (!secret) {
+    return null;
+  }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = jwt.verify(token, secret) as JwtPayload;
     return decoded;
   } catch {
     return null;
@@ -41,16 +55,6 @@ export function authenticateAdmin(
   res: Response,
   next: NextFunction,
 ): void {
-  // Dev mode bypass: if ADMIN_PASSWORD_HASH is not set, allow unauthenticated access
-  if (!process.env.ADMIN_PASSWORD_HASH) {
-    console.warn(
-      '[auth] ADMIN_PASSWORD_HASH is not set — admin endpoints are unprotected!',
-    );
-    // Attach a mock SUPER_ADMIN user so authorizeRoles passes
-    (req as any).user = { username: 'dev-admin', role: 'SUPER_ADMIN' as UserRole };
-    return next();
-  }
-
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -98,4 +102,4 @@ export function authorizeRoles(...allowedRoles: UserRole[]) {
   };
 }
 
-export { JWT_SECRET };
+export { getJwtSecret };

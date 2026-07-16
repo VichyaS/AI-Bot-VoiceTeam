@@ -1,0 +1,12 @@
+node_modules
+admin-dashboard/node_modules
+dist
+admin-dashboard/dist
+.git
+.gitignore
+npm-debug.log
+.env
+.env.local
+config.json
+users.json
+unhandled_logs.json

@@ -85,8 +85,7 @@ export async function startTunnel(sipPort: number): Promise<string> {
       // แต่ cloudflared free tunnel รองรับแค่ HTTP/HTTPS โดยตรง
       // สำหรับ TCP ต้องใช้ Cloudflare Tunnel feature (ฟรี)
 
-      // วิธีที่ใช้ได้ฟรี: สร้าง HTTP tunnel แล้ว Ngrok HTTP ก็พอ
-      // หรือใช้ cloudflared access TCP ผ่าน Cloudflare Zero Trust
+      // For a free TCP tunnel, cloudflared access TCP via Zero Trust is an option.
 
       // วิธีที่ง่ายที่สุด: ใช้ cloudflared tunnel --url tcp://localhost:5060
       tunnelProcess = spawn(cloudflaredPath, [

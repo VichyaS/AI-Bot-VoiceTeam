@@ -3,8 +3,9 @@ import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import jwt from 'jsonwebtoken';
 import { systemEventEmitter, LOG_EVENT, ALERT_EVENT, CALL_EVENT, type LogEntry, type SystemAlert, type CallEvent } from './system-logger.js';
+import { getJwtSecret } from './auth-jwt.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production';
+const JWT_SECRET = getJwtSecret();
 
 /**
  * Creates and returns a WebSocketServer attached to the provided HTTP server
@@ -31,20 +32,18 @@ export function createLogWebSocketServer(httpServer: HttpServer): WebSocketServe
       return; // Let other paths fall through
     }
 
-    // Dev mode bypass
-    if (!process.env.ADMIN_PASSWORD_HASH) {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-      });
-      return;
-    }
-
     // Extract token from query string (e.g. ?token=eyJ...)
     const query = url.parse(request.url || '', true).query;
     const token = query.token as string | undefined;
 
     if (!token) {
       console.error('[WS Auth Error] Connection refused — token query parameter is missing');
+      socket.destroy();
+      return;
+    }
+
+    if (!JWT_SECRET) {
+      console.error('[WS Auth Error] Connection refused — JWT_SECRET is not configured');
       socket.destroy();
       return;
     }

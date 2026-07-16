@@ -5,7 +5,7 @@
 [![React](https://img.shields.io/badge/react-19-blue)](https://react.dev)
 [![Tailwind](https://img.shields.io/badge/tailwind-4-cyan)](https://tailwindcss.com)
 
-ระบบ IVR Voice Bot อัจฉริยะที่ใช้ AI (OpenRouter) ในการวิเคราะห์คำพูดภาษาไทย เพื่อค้นหาพนักงานจาก Microsoft Entra ID และโอนสายอัตโนมัติผ่าน AudioCodes SBC — Deployed on Fly.io 🚀
+- ระบบ IVR Voice Bot อัจฉริยะที่ใช้ AI (OpenRouter) ในการวิเคราะห์คำพูดภาษาไทย เพื่อค้นหาพนักงานจาก Microsoft Entra ID และโอนสายอัตโนมัติผ่าน AudioCodes SBC
 
 ---
 
@@ -52,10 +52,6 @@ voice-bot-api/
 │   ├── tts-cleaner.ts                 # ทำความสะอาดข้อความก่อน TTS
 │   ├── cache.ts                       # TTL Cache สำหรับ Entra ID + Departments
 │   ├── user-store.ts                  # อ่าน/เขียน users.json
-│   ├── ngrok-tunnel.ts                   # Ngrok TCP tunnel manager
-├── sip-endpoint.ts                   # SIP Media Endpoint (TCP/UDP)
-├── speech-asr.ts                     # Azure Speech-to-Text processor
-├── ngrok-tunnel.ts                   # Ngrok TCP tunnel manager
 ├── sip-endpoint.ts                   # SIP Media Endpoint (TCP/UDP)
 ├── speech-asr.ts                     # Azure Speech-to-Text processor
 │   ├── websocket/                     # Core SDK classes
@@ -91,11 +87,8 @@ voice-bot-api/
 ├── config.example.json                 # ตัวอย่าง config สำหรับ dev
 ├── users.json                          # ผู้ใช้ระบบ (ไม่ commit ขึ้น git)
 ├── users.example.json                  # ตัวอย่าง users
-├── fly.toml                            # Fly.io deployment config
-├── Dockerfile                          # Docker image สำหรับ Fly.io
 ├── docs/
-│   ├── sbc-config.md                   # คู่มือตั้งค่า SBC
-│   └── flyio-secrets-setup.sh          # ตัวอย่างคำสั่งตั้งค่า secrets
+│   └── sbc-config.md                   # คู่มือตั้งค่า SBC
 └── package.json
 ```
 
@@ -147,112 +140,9 @@ cd admin-dashboard && npm run dev
 
 ---
 
-## 🚢 Deploy ขึ้น Fly.io
+## 🚢 Deployment Notes
 
-### Prerequisites
-
-| รายการ | รายละเอียด |
-|---|---|
-| Ngrok Account | ฟรี ต้องมี credit card (ไม่คิดเงิน) — https://dashboard.ngrok.com |
-| Fly.io Account | ต้องเพิ่ม credit card (Trial $5 credit) |
-| Azure Speech | Speech Services resource |
-
-### 1. Push ขึ้น GitHub
-
-```bash
-git remote add origin https://github.com/VichyaS/AI-Bot-VoiceTeam.git
-git push -u origin main
-```
-
-### 2. Deploy ไปยัง Fly.io
-
-```bash
-# Login
-flyctl auth login
-
-# Deploy
-flyctl deploy --app voiceteam-bot --remote-only
-
-# ดูสถานะ
-flyctl status --app voiceteam-bot
-# → https://voiceteam-bot.fly.dev
-```
-
-### 3. ตั้งค่า Environment Variables
-
-```bash
-# Auth
-flyctl secrets set JWT_SECRET=your-jwt-secret --app voiceteam-bot
-flyctl secrets set ADMIN_USERNAME=superadmin --app voiceteam-bot
-flyctl secrets set ADMIN_PASSWORD_HASH='$2b$10$...' --app voiceteam-bot
-
-# OpenRouter
-flyctl secrets set CONFIG_openRouterApiKey=sk-or-v1-... --app voiceteam-bot
-
-# Ngrok (required for SIP/RTP tunnel)
-flyctl secrets set NGROK_AUTHTOKEN=your_ngrok_token --app voiceteam-bot
-
-# Azure Speech (for ASR)
-flyctl secrets set CONFIG_speechKey=your_speech_key --app voiceteam-bot
-flyctl secrets set CONFIG_speechRegion=eastasia --app voiceteam-bot
-
-# Azure Entra ID (for directory lookup - optional)
-flyctl secrets set CONFIG_tenantId=... --app voiceteam-bot
-flyctl secrets set CONFIG_clientId=... --app voiceteam-bot
-flyctl secrets set CONFIG_clientSecret=... --app voiceteam-bot
-```
-
-> ⚠️ `CONFIG_*` env vars จะคงอยู่ถาวร redeploy ก็ไม่หาย
-> Config อื่นๆ สามารถตั้งค่าผ่าน Admin Dashboard ได้
-
-### 4. ดู Ngrok Tunnel URL
-
-```bash
-flyctl logs --app voiceteam-bot
-# หา: [tunnel] ✅ TCP tunnel: 0.tcp.ap.ngrok.io:xxxxx
-```
-
-### 5. ตั้งค่า SBC
-
-ดูคู่มือละเอียดที่: **`docs/sbc-config.md`**
-
-| รายการ | ค่า |
-|---|---|
-| **Proxy Set → Host** | `0.tcp.ap.ngrok.io` (จาก Log) |
-| **Proxy Set → Port** | `xxxxx` (จาก Log) |
-| **Proxy Set → Transport** | `TCP` |
-| **IP Group** | `Bot-SIP-Endpoint` → Proxy Set ด้านบน |
-| **IP-to-IP Routing** | `4099 → Bot-SIP-Endpoint` |
-| **Voice.AI Connector URL** | `wss://voiceteam-bot.fly.dev/api/audiocodes/bot-ws` |
-
-### 6. Architecture
-
-```mermaid
-flowchart LR
-    subgraph CALLER["📞 ผู้โทร"]
-        PHONE["IP Phone / MicroSIP"]
-    end
-    subgraph SBC["SBC VE 7.40"]
-        ROUTING["4099 → Bot-SIP-Endpoint"]
-        PROXY["Proxy Set: Bot-SIP-Server<br/>→ Ngrok TCP"]
-        CONN["Voice.AI Connector<br/>wss://voiceteam-bot.fly.dev"]
-    end
-    subgraph NGROK["Ngrok (ฟรี)"]
-        TCP["TCP Tunnel<br/>0.tcp.ap.ngrok.io:xxxxx"]
-    end
-    subgraph FLYIO["Fly.io Singapore"]
-        HTTP["🌐 Port 8080<br/>Webhook + Dashboard"]
-        SIP["📞 Port 5060 TCP/UDP<br/>SIP Media Endpoint"]
-        RTP["🎤 RTP Audio → ASR"]
-        AI["🧠 AI + Entra ID"]
-    end
-
-    PHONE -->|SIP| SBC
-    SBC -->|TCP| PROXY --> TCP --> SIP
-    SBC -->|wss://| CONN --> HTTP
-    SIP -->|Audio| RTP
-    RTP -->|Azure Speech| AI
-```
+This repository is intended to be deployed on a standard host or VM with direct access to the SIP and RTP ports. Configure the environment variables and network rules according to your target platform.
 
 ---
 

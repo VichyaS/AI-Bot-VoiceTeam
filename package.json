@@ -16,7 +16,7 @@
     "seed-users": "tsx src/scripts/seed-users.ts",
     "format": "dprint fmt",
     "format:check": "dprint check",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test --import tsx src/**/*.test.ts",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "prepack": "npm run build"
@@ -60,7 +60,6 @@
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
-    "@ngrok/ngrok": "^1.7.0",
     "bcrypt": "^6.0.0",
     "cloudflared": "^0.7.1",
     "debug": "^4.4.3",

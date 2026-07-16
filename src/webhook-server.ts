@@ -32,7 +32,6 @@ import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
-import { startTunnel, stopTunnel, getTunnelUrl, getHttpTunnelUrl } from './ngrok-tunnel.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -85,7 +84,7 @@ app.use(helmet({
 }));
 app.disable('x-powered-by');
 
-// Trust proxy — required for Fly.io and Render (behind load balancers)
+// Trust proxy — required for reverse proxies and load balancers
 // Set to 1 so only the first hop (the load balancer) is trusted,
 // preventing IP-based rate-limit bypass.
 app.set('trust proxy', 1);
@@ -95,30 +94,6 @@ const httpServer = createServer(app);
 
 // Attach WebSocket server (noServer mode using HTTP upgrade)
 createLogWebSocketServer(httpServer);
-
-// ── Start ngrok tunnel (if auth token is set) ──────────────────────
-const hasNgrokToken = !!process.env.NGROK_AUTHTOKEN || !!process.env.TUNNEL_TYPE;
-if (hasNgrokToken) {
-  const sipPort = parseInt(process.env.SIP_PORT || '5060', 10);
-  console.log(`[tunnel] NGROK_AUTHTOKEN detected — starting TCP tunnel for SIP port ${sipPort}...`);
-  emitInfo(`[tunnel] Starting TCP tunnel for SIP port ${sipPort}...`);
-  startTunnel(sipPort)
-    .then((info) => {
-      const hostname = new URL(info.url).hostname;
-      console.log(`[tunnel] ✅ TCP tunnel: ${hostname}:${info.port}`);
-      console.log(`[tunnel] → SBC Proxy Set: Host=${hostname}, Port=${info.port}, Transport=TCP`);
-      emitInfo(`[tunnel] ✅ TCP tunnel: ${hostname}:${info.port}`);
-      // Set tunnel info on SIP endpoint so Contact header points through tunnel
-      sipEndpoint.setTunnel(hostname, info.port);
-    })
-    .catch((err) => {
-      const msg = `[tunnel] ❌ Failed: ${err.message}`;
-      console.log(msg);
-      emitError(msg);
-    });
-} else {
-  console.log('[tunnel] NGROK_AUTHTOKEN not set — SIP/RTP will not be reachable from outside');
-}
 
 // ── AudioCodes Bot API WebSocket Server ────────────────────────────
 // This WebSocket endpoint handles the VoiceAI Connect internal protocol.

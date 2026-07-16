@@ -61,6 +61,9 @@ router.post('/config', (req: Request, res: Response) => {
  * Copy the output of this endpoint into the CONFIG_JSON env var on Render Dashboard.
  */
 router.get('/config/export', (_req: Request, res: Response) => {
+  if (process.env.CONFIG_EXPORT_ENABLED !== 'true') {
+    return res.status(403).json({ error: 'Configuration export is disabled. Set CONFIG_EXPORT_ENABLED=true to allow it.' });
+  }
   res.json(getConfig());
 });
 
