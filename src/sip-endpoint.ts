@@ -213,6 +213,11 @@ export class SipMediaEndpoint extends EventEmitter {
     if (!call) return;
 
     const transportParam = call.transport === 'tcp' ? ';transport=tcp' : '';
+    // For TCP calls, use the SBC's IP (from call.remoteAddr) in Contact
+    // so the SBC routes in-dialog requests through its ProxySet.
+    const contactHost = (call.transport === 'tcp' && call.remoteAddr !== '127.0.0.1')
+      ? call.remoteAddr
+      : this.getLocalIp();
     const referMsg = [
       `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
       `Via: SIP/2.0/${call.transport === 'tcp' ? 'TCP' : 'UDP'} ${this.getLocalIp()}:${this.sipPort}`,
@@ -221,7 +226,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `Call-ID: ${call.callId}`,
       `CSeq: ${++call.seq} REFER`,
       `Refer-To: <${targetSipUri}>`,
-      `Contact: <sip:bot@${this.getLocalIp()}:${this.sipPort}${transportParam}>`,
+      `Contact: <sip:bot@${contactHost}:${this.sipPort}${transportParam}>`,
       'Content-Length: 0',
       '',
     ].join('\r\n');
@@ -357,6 +362,15 @@ export class SipMediaEndpoint extends EventEmitter {
       '',
     ].join('\r\n');
 
+    // For TCP connections (via ngrok), remoteAddr is 127.0.0.1.
+    // Use the SBC's own IP from the Via header so the SBC routes
+    // in-dialog requests (ACK, BYE) through its ProxySet back to us.
+    let contactHost = remoteAddr;
+    if (tcpSocket) {
+      const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
+      if (viaMatch) contactHost = viaMatch[1];
+    }
+
     const response = [
       `SIP/2.0 200 OK`,
       `Via: ${msg.headers.via || ''}`,
@@ -364,7 +378,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `To: ${to};tag=${tag}`,
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 INVITE'}`,
-      `Contact: <sip:bot@${remoteAddr}:${this.sipPort}${tcpSocket ? ';transport=tcp' : ''}>`,
+      `Contact: <sip:bot@${contactHost}:${this.sipPort}${tcpSocket ? ';transport=tcp' : ''}>`,
       `Content-Type: application/sdp`,
       `Content-Length: ${Buffer.byteLength(sdp)}`,
       '',
