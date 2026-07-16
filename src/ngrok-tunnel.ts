@@ -5,6 +5,7 @@
  *   NGROK_AUTHTOKEN   — ngrok auth token (required)
  *   NGROK_HTTP_DOMAIN — fixed ngrok domain for HTTP tunnel (e.g. gory-catty-duckbill.ngrok-free.dev)
  *   SIP_PORT          — local SIP port (default 5060)
+ *   RTP_TCP_PORT      — local RTP-over-TCP port (default 5062)
  */
 
 import { emitInfo, emitError } from './system-logger.js';
@@ -12,6 +13,8 @@ import { emitInfo, emitError } from './system-logger.js';
 let tunnelUrl = '';
 let tunnelPort = 0;
 let httpTunnelUrl = '';
+let rtpTunnelUrl = '';
+let rtpTunnelPort = 0;
 
 export interface TunnelInfo {
   url: string;
@@ -33,6 +36,22 @@ export async function startTunnel(sipPort: number): Promise<TunnelInfo> {
   console.log(`[tunnel] ✅ TCP tunnel: ${parsed.hostname}:${tunnelPort}`);
   console.log(`[tunnel] → SBC Proxy Set: Host=${parsed.hostname}, Port=${tunnelPort}, Transport=TCP`);
   console.log(`[tunnel] → Webhook URL: https://ai-bot-voiceteam.onrender.com/api/audiocodes/webhook`);
+
+  // ── Start RTP-over-TCP tunnel (for media via ngrok) ───────────
+  const rtpPort = parseInt(process.env.RTP_TCP_PORT || '5062', 10);
+  try {
+    console.log(`[tunnel] Starting ngrok RTP-TCP tunnel for port ${rtpPort}...`);
+    const rtpT = await ngrok.connect({ addr: rtpPort, proto: 'tcp', authtoken: token });
+    rtpTunnelUrl = rtpT.url() || '';
+    const rtpParsed = new URL(rtpTunnelUrl);
+    rtpTunnelPort = parseInt(rtpParsed.port, 10);
+    console.log(`[tunnel] ✅ RTP-TCP tunnel: ${rtpParsed.hostname}:${rtpTunnelPort}`);
+    emitInfo(`[tunnel] ✅ RTP-TCP tunnel: ${rtpParsed.hostname}:${rtpTunnelPort}`);
+  } catch (err: any) {
+    const msg = `[tunnel] ❌ RTP-TCP tunnel failed: ${err.message}`;
+    console.log(msg);
+    emitError(msg);
+  }
 
   // ── Start HTTP tunnel for admin dashboard (if domain is set) ──
   const httpDomain = process.env.NGROK_HTTP_DOMAIN;
@@ -63,3 +82,5 @@ export function stopTunnel(): void {}
 export function getTunnelUrl(): string { return tunnelUrl; }
 export function getTunnelPort(): number { return tunnelPort; }
 export function getHttpTunnelUrl(): string { return httpTunnelUrl; }
+export function getRtpTunnelUrl(): string { return rtpTunnelUrl; }
+export function getRtpTunnelPort(): number { return rtpTunnelPort; }

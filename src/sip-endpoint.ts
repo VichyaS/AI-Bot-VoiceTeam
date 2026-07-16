@@ -111,6 +111,7 @@ export class SipMediaEndpoint extends EventEmitter {
   private rtpPortBase: number;
   private sipSocket!: ReturnType<typeof createSocket>;
   private tcpServer!: ReturnType<typeof createServer>;
+  private rtpTcpServer!: ReturnType<typeof createServer>;
   private rtpSockets: Map<string, ReturnType<typeof createSocket>> = new Map();
   private calls: Map<string, ActiveCall> = new Map();
   private running = false;
@@ -118,6 +119,9 @@ export class SipMediaEndpoint extends EventEmitter {
   private nextRtpPort = 0;
   private tunnelHostname = '';
   private tunnelPort = 0;
+  private rtpTunnelHostname = '';
+  private rtpTunnelPort = 0;
+  private rtpTcpPort = 5062;
 
   // ASR buffer
   public onAudioData?: (sessionId: string, audioBuffer: Int16Array) => void;
@@ -128,13 +132,19 @@ export class SipMediaEndpoint extends EventEmitter {
     this.sipPort = sipPort;
     this.rtpPortBase = rtpPortBase;
     this.nextRtpPort = rtpPortBase;
+    this.rtpTcpPort = parseInt(process.env.RTP_TCP_PORT || '5062', 10);
   }
 
-  /** Set the ngrok tunnel hostname:port so the Contact header points
-   *  through the tunnel, avoiding SBC loopback to its own IP. */
+  /** Set the ngrok tunnel hostname:port for SIP signaling. */
   setTunnel(hostname: string, port: number): void {
     this.tunnelHostname = hostname;
     this.tunnelPort = port;
+  }
+
+  /** Set the ngrok tunnel hostname:port for RTP media over TCP. */
+  setRtpTunnel(hostname: string, port: number): void {
+    this.rtpTunnelHostname = hostname;
+    this.rtpTunnelPort = port;
   }
 
   listen(): void {
@@ -189,6 +199,53 @@ export class SipMediaEndpoint extends EventEmitter {
       this.tcpServer.listen(this.sipPort, '0.0.0.0', () => {
         emitInfo(`[SIP] TCP endpoint listening on port ${this.sipPort}`);
       });
+
+      // ── RTP over TCP Server (for Ngrok tunnel — RTP via TCP) ───
+      this.rtpTcpServer = createServer((socket) => {
+        const remoteAddr = socket.remoteAddress || '0.0.0.0';
+        const remotePort = socket.remotePort || 0;
+        console.log(`[SIP] RTP-TCP connection from ${remoteAddr}:${remotePort}`);
+
+        // RFC 4571 framing: 2-byte big-endian length prefix before each RTP packet
+        let frameBuf = Buffer.alloc(0);
+        socket.on('data', (chunk: Buffer) => {
+          frameBuf = Buffer.concat([frameBuf, chunk]);
+          while (frameBuf.length >= 2) {
+            const frameLen = frameBuf.readUInt16BE(0);
+            if (frameBuf.length < 2 + frameLen) break; // wait for more data
+            const rtpData = frameBuf.subarray(2, 2 + frameLen);
+            frameBuf = frameBuf.subarray(2 + frameLen);
+
+            const packet = parseRtpPacket(rtpData);
+            if (!packet) continue;
+            if (packet.payloadType === 0 || packet.payloadType === 8) {
+              const isAlaw = packet.payloadType === 8;
+              const samples = decodeG711To16Bit(packet.payload, isAlaw);
+              // Send to all active call sessions
+              for (const [sid, call] of this.calls) {
+                if (this.onAudioData) {
+                  this.onAudioData(sid, samples);
+                }
+              }
+            }
+          }
+        });
+        socket.on('error', (err) => {
+          console.error(`[SIP] RTP-TCP socket error: ${err.message}`);
+        });
+        socket.on('close', () => {
+          console.log(`[SIP] RTP-TCP connection closed: ${remoteAddr}:${remotePort}`);
+        });
+      });
+
+      this.rtpTcpServer.on('error', (err: any) => {
+        console.error(`[SIP] RTP-TCP server error: ${err.message}`);
+        emitError(`[SIP] RTP-TCP server error: ${err.message}`);
+      });
+
+      this.rtpTcpServer.listen(this.rtpTcpPort, '0.0.0.0', () => {
+        emitInfo(`[SIP] RTP-TCP endpoint listening on port ${this.rtpTcpPort}`);
+      });
     } catch (err: any) {
       console.error(`[SIP] Failed to start: ${err.message}`);
       emitError(`[SIP] Failed to start: ${err.message}`);
@@ -213,6 +270,7 @@ export class SipMediaEndpoint extends EventEmitter {
     this.running = false;
     this.sipSocket?.close();
     this.tcpServer?.close();
+    this.rtpTcpServer?.close();
     for (const [id, sock] of this.rtpSockets) {
       sock.close();
     }
@@ -377,27 +435,25 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // ── Build SDP — loop audio back through SBC's media processor ─
-    // The SBC's StreamsConnector bridges CID 37 (phone) ↔ CID 38 (bot).
-    // By pointing the SDP back to the SBC's own IP:mediaPort, the SBC
-    // sends phone audio to itself, creating a hairpin loop through the
-    // StreamsConnector so the phone hears audio (even without bot RTP).
-    //
-    // When the bot generates audio (TTS), it sends RTP to this same
-    // SBC address:port, which the StreamsConnector forwards to the phone.
-    const sdpMediaHost = tcpSocket && sbcIp ? sbcIp : '127.0.0.1';
-    const sdpMediaPort = tcpSocket && sbcIp && sbcMediaPort ? sbcMediaPort : myPort;
+    // ── Build SDP — RTP over TCP via ngrok tunnel ────────────────
+    // When the call arrives via TCP (ngrok), we advertise RTP/AVP/TCP
+    // so the SBC sends RTP over TCP through the same tunnel.
+    // The SDP points to the ngrok tunnel hostname:port.
+    const useRtpOverTcp = tcpSocket && this.rtpTunnelHostname;
+    const sdpMediaHost = useRtpOverTcp ? this.rtpTunnelHostname : (tcpSocket && sbcIp ? sbcIp : '127.0.0.1');
+    const sdpMediaPort = useRtpOverTcp ? this.rtpTunnelPort : (tcpSocket && sbcIp && sbcMediaPort ? sbcMediaPort : myPort);
     const sdp = [
       'v=0',
       `o=- 0 0 IN IP4 ${sdpMediaHost}`,
       's=SBC Bot Media',
       `c=IN IP4 ${sdpMediaHost}`,
       't=0 0',
-      `m=audio ${sdpMediaPort} RTP/AVP 0`,
+      `m=audio ${sdpMediaPort} ${useRtpOverTcp ? 'RTP/AVP/TCP' : 'RTP/AVP'} 0`,
       'a=rtpmap:0 PCMU/8000',
+      useRtpOverTcp ? 'a=protocol:TCP/RTP/AVP' : '',
       'a=sendrecv',
       '',
-    ].join('\r\n');
+    ].filter(Boolean).join('\r\n');
 
     // For TCP connections via ngrok tunnel:
     // Use the tunnel hostname in Contact so the SBC routes in-dialog
