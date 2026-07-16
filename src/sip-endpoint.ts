@@ -38,6 +38,9 @@ interface ActiveCall {
   transport: 'udp' | 'tcp';
   tcpSocket?: import('node:net').Socket;
   sbcIp?: string; // SBC's real IP (from Via header), for Contact header in TCP calls
+  sbcMediaHost?: string; // SBC's media IP from INVITE SDP
+  sbcMediaPort?: number; // SBC's media port from INVITE SDP
+  botRtpPort?: number;   // Bot's local RTP port for this call
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -311,11 +314,14 @@ export class SipMediaEndpoint extends EventEmitter {
     const caller = from.match(/sip:(\d+)@/)?.[1] || 'unknown';
     const callee = to.match(/sip:(\d+)@/)?.[1] || 'unknown';
 
-    // Parse SDP for media port
-    let mediaPort = 0;
+    // Parse SDP for media port and SBC's media IP
+    let sbcMediaPort = 0;
+    let sbcMediaHost = '';
     if (msg.body) {
-      const match = msg.body.match(/m=audio (\d+)/);
-      if (match) mediaPort = parseInt(match[1], 10);
+      const portMatch = msg.body.match(/m=audio (\d+)/);
+      if (portMatch) sbcMediaPort = parseInt(portMatch[1], 10);
+      const ipMatch = msg.body.match(/c=IN IP4 (\d+\.\d+\.\d+\.\d+)/);
+      if (ipMatch) sbcMediaHost = ipMatch[1];
     }
 
     const myPort = this.getNextRtpPort();
@@ -333,7 +339,7 @@ export class SipMediaEndpoint extends EventEmitter {
       sessionId,
       caller,
       callee,
-      rtpPort: mediaPort,
+      rtpPort: sbcMediaPort,
       callId,
       tag,
       seq: 1,
@@ -342,6 +348,9 @@ export class SipMediaEndpoint extends EventEmitter {
       transport,
       tcpSocket,
       sbcIp,
+      sbcMediaHost: sbcMediaHost || sbcIp,
+      sbcMediaPort,
+      botRtpPort: myPort,
     };
     this.calls.set(sessionId, call);
 
@@ -368,17 +377,23 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // ── Build SDP — RTP goes to loopback, a=sendrecv prevents hold ──
-    // SBC will send RTP to 127.0.0.1:myPort — silently dropped.
-    // But a=sendrecv ensures SBC doesn't put call on hold,
-    // preventing caller from sending REINVITE that would fail.
+    // ── Build SDP — loop audio back through SBC's media processor ─
+    // The SBC's StreamsConnector bridges CID 37 (phone) ↔ CID 38 (bot).
+    // By pointing the SDP back to the SBC's own IP:mediaPort, the SBC
+    // sends phone audio to itself, creating a hairpin loop through the
+    // StreamsConnector so the phone hears audio (even without bot RTP).
+    //
+    // When the bot generates audio (TTS), it sends RTP to this same
+    // SBC address:port, which the StreamsConnector forwards to the phone.
+    const sdpMediaHost = tcpSocket && sbcIp ? sbcIp : '127.0.0.1';
+    const sdpMediaPort = tcpSocket && sbcIp && sbcMediaPort ? sbcMediaPort : myPort;
     const sdp = [
       'v=0',
-      'o=- 0 0 IN IP4 127.0.0.1',
+      `o=- 0 0 IN IP4 ${sdpMediaHost}`,
       's=SBC Bot Media',
-      'c=IN IP4 127.0.0.1',
+      `c=IN IP4 ${sdpMediaHost}`,
       't=0 0',
-      `m=audio ${myPort} RTP/AVP 0`,
+      `m=audio ${sdpMediaPort} RTP/AVP 0`,
       'a=rtpmap:0 PCMU/8000',
       'a=sendrecv',
       '',
