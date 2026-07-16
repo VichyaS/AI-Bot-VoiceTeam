@@ -14,19 +14,14 @@
 
 ## 1. Azure VM (แนะนำสำหรับ SBC / SIP)
 
-### 1.1 Deploy ด้วย Azure CLI / Bicep
+### 1.1 Deploy ด้วย Azure CLI
 
 ```bash
 chmod +x deploy/azure/azure-deploy.sh
 ./deploy/azure/azure-deploy.sh
 ```
 
-หรือใช้ Bicep:
-
-```bash
-az group create --name voice-bot-rg --location eastus
-az deployment group create --resource-group voice-bot-rg --template-file deploy/azure/main.bicep --parameters sshPublicKey="$(cat ~/.ssh/id_rsa.pub)"
-```
+ตัวสคริปต์จะสร้าง Resource Group, Ubuntu VM, Public IP และเปิดพอร์ตที่จำเป็นให้โดยอัตโนมัติ
 
 ### 1.2 SSH เข้า VM
 

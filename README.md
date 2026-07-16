@@ -147,7 +147,7 @@ This release includes stronger transport defaults for production SIP deployments
 - Optional SIP over TLS listener on port `5061` via `sipTlsEnabled` and `sipTlsPort`
 - Optional SRTP advertisement in SDP via `srtpEnabled` and `srtpProfile`
 - TLS certificate paths configurable through `sipTlsCertPath` and `sipTlsKeyPath`
-- Azure deployment script + Bicep template under [deploy/azure/azure-deploy.sh](deploy/azure/azure-deploy.sh) and [deploy/azure/main.bicep](deploy/azure/main.bicep)
+- Azure deployment script under [deploy/azure/azure-deploy.sh](deploy/azure/azure-deploy.sh)
 
 ### Related docs
 
