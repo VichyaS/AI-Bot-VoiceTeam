@@ -14,6 +14,22 @@
 
 ## 1. Azure VM (แนะนำสำหรับ SBC / SIP)
 
+### 1.1 Deploy ด้วย Azure CLI / Bicep
+
+```bash
+chmod +x deploy/azure/azure-deploy.sh
+./deploy/azure/azure-deploy.sh
+```
+
+หรือใช้ Bicep:
+
+```bash
+az group create --name voice-bot-rg --location eastus
+az deployment group create --resource-group voice-bot-rg --template-file deploy/azure/main.bicep --parameters sshPublicKey="$(cat ~/.ssh/id_rsa.pub)"
+```
+
+### 1.2 SSH เข้า VM
+
 ### 1.1 สถาปัตยกรรม
 
 ```mermaid
@@ -74,6 +90,22 @@ sudo npm run build:all
 ### 1.6 ตั้งค่า environment variables
 
 ```bash
+export PORT=8080
+export SIP_PORT=5060
+export SIP_TLS_ENABLED=true
+export SIP_TLS_PORT=5061
+export SIP_TLS_CERT_PATH=/etc/ssl/voicebot/voicebot.crt
+export SIP_TLS_KEY_PATH=/etc/ssl/voicebot/voicebot.key
+export SRTP_ENABLED=false
+export CONFIG_transferProtocol=TLS
+export CONFIG_sipDomain="sip:voicebot.example.com"
+```
+
+### 1.7 ติดตั้ง TLS certificate สำหรับ HTTPS / SIP/TLS
+
+ดูรายละเอียดเพิ่มเติมที่ [docs/ssl-domain-setup-th.md](ssl-domain-setup-th.md) และ [docs/sbc-config-audiocodes-760-th.md](sbc-config-audiocodes-760-th.md)
+
+```bash
 export JWT_SECRET="your-long-random-secret-at-least-32-chars"
 export ADMIN_USERNAME="superadmin"
 export ADMIN_PASSWORD_HASH="$(node -e "console.log(require('bcrypt').hashSync(process.argv[1], 10))" "your-password")"
@@ -87,7 +119,7 @@ export CONFIG_clientId="your-client-id"
 export CONFIG_clientSecret="your-client-secret"
 ```
 
-### 1.7 รันด้วย PM2
+### 1.8 รันด้วย PM2
 
 ```bash
 pm2 start dist/webhook-server.js --name voice-bot-api --env production
@@ -95,7 +127,7 @@ pm2 save
 pm2 startup
 ```
 
-### 1.8 ตั้งค่า Nginx reverse proxy
+### 1.9 ตั้งค่า Nginx reverse proxy
 
 ```bash
 sudo tee /etc/nginx/sites-available/voice-bot-api >/dev/null <<'EOF'
@@ -119,7 +151,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 1.9 เปิด firewall / NSG
+### 1.10 เปิด firewall / NSG
 
 ```bash
 sudo ufw allow OpenSSH
@@ -170,6 +202,13 @@ flowchart LR
 ---
 
 ## 4. Azure Security checklist
+
+- เปิดพอร์ต 80/443 สำหรับ HTTPS
+- เปิดพอร์ต 5060/5061 สำหรับ SIP signaling
+- เปิด RTP range 10000-20000/udp สำหรับ media
+- ใช้ TLS certificate ที่มี SAN สำหรับโดเมนจริง
+- ถ้าใช้ Azure Firewall / NSG ให้จำกัดแหล่งที่มาให้อยู่ในช่วง SBC / trusted network เท่านั้น
+- ใช้ Azure Key Vault สำหรับ secret ที่สำคัญ เช่น OpenRouter, Speech, Entra
 
 - ใช้ Managed Identity เมื่อทำงานกับ Azure resources
 - เก็บ secret ใน Azure Key Vault หรือ Environment Variables

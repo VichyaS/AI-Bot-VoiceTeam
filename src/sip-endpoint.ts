@@ -11,8 +11,10 @@
 
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:net';
+import { createServer as createTlsServer, type TLSSocket } from 'node:tls';
 import { networkInterfaces } from 'node:os';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
 import { getConfig } from './config-manager.js';
 import { emitInfo, emitAi, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
 
@@ -111,6 +113,11 @@ export class SipMediaEndpoint extends EventEmitter {
   private rtpPortBase: number;
   private sipSocket!: ReturnType<typeof createSocket>;
   private tcpServer!: ReturnType<typeof createServer>;
+  private tlsServer?: ReturnType<typeof createTlsServer>;
+  private tlsPort: number;
+  private tlsEnabled: boolean;
+  private srtpEnabled: boolean;
+  private srtpProfile: string;
   private rtpSockets: Map<string, ReturnType<typeof createSocket>> = new Map();
   private calls: Map<string, ActiveCall> = new Map();
   private running = false;
@@ -123,9 +130,14 @@ export class SipMediaEndpoint extends EventEmitter {
 
   constructor(sipPort = 5060, rtpPortBase = 10000) {
     super();
+    const cfg = getConfig();
     this.sipPort = sipPort;
     this.rtpPortBase = rtpPortBase;
     this.nextRtpPort = rtpPortBase;
+    this.tlsPort = cfg.sipTlsPort || 5061;
+    this.tlsEnabled = Boolean(cfg.sipTlsEnabled);
+    this.srtpEnabled = Boolean(cfg.srtpEnabled);
+    this.srtpProfile = cfg.srtpProfile || 'AES_CM_128_HMAC_SHA1_80';
   }
 
   listen(): void {
@@ -180,6 +192,38 @@ export class SipMediaEndpoint extends EventEmitter {
       this.tcpServer.listen(this.sipPort, '0.0.0.0', () => {
         emitInfo(`[SIP] TCP endpoint listening on port ${this.sipPort}`);
       });
+
+      if (this.tlsEnabled) {
+        const certPath = getConfig().sipTlsCertPath || '';
+        const keyPath = getConfig().sipTlsKeyPath || '';
+        if (certPath && keyPath && fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+          this.tlsServer = createTlsServer({
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath),
+            requestCert: false,
+            rejectUnauthorized: false,
+          });
+          this.tlsServer.on('secureConnection', (socket: TLSSocket) => {
+            const remoteAddr = socket.remoteAddress || '0.0.0.0';
+            const remotePort = socket.remotePort || 0;
+            console.log(`[SIP] TLS connection from ${remoteAddr}:${remotePort}`);
+            let buffer = '';
+            socket.on('data', (chunk: Buffer) => {
+              buffer += chunk.toString('utf-8');
+              if (buffer.includes('\r\n\r\n') || buffer.includes('\n\n')) {
+                this.handleSipData(buffer, remoteAddr, remotePort, socket as unknown as import('node:net').Socket);
+                buffer = '';
+              }
+            });
+            socket.on('error', (err) => console.error(`[SIP] TLS socket error: ${err.message}`));
+          });
+          this.tlsServer.listen(this.tlsPort, '0.0.0.0', () => {
+            emitInfo(`[SIP] TLS endpoint listening on port ${this.tlsPort}`);
+          });
+        } else {
+          emitError('[SIP] TLS enabled but certificate/key files are missing. SIP/TLS listener skipped.');
+        }
+      }
     } catch (err: any) {
       console.error(`[SIP] Failed to start: ${err.message}`);
       emitError(`[SIP] Failed to start: ${err.message}`);
@@ -209,6 +253,7 @@ export class SipMediaEndpoint extends EventEmitter {
     }
     this.rtpSockets.clear();
     this.calls.clear();
+    this.tlsServer?.close();
   }
 
   // ── Send SIP Transfer (Refer) ──────────────────────────────────
@@ -370,6 +415,7 @@ export class SipMediaEndpoint extends EventEmitter {
     // StreamsConnector so the phone hears audio (even without bot RTP).
     const sdpMediaHost = tcpSocket && sbcIp ? sbcIp : '127.0.0.1';
     const sdpMediaPort = tcpSocket && sbcIp && sbcMediaPort ? sbcMediaPort : myPort;
+    const cryptoLine = this.srtpEnabled ? `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQ1N1R0J1Q2N3R4T5V6W7X8Y9Z0` : '';
     const sdp = [
       'v=0',
       `o=- 0 0 IN IP4 ${sdpMediaHost}`,
@@ -379,8 +425,9 @@ export class SipMediaEndpoint extends EventEmitter {
       `m=audio ${sdpMediaPort} RTP/AVP 0`,
       'a=rtpmap:0 PCMU/8000',
       'a=sendrecv',
+      cryptoLine,
       '',
-    ].join('\r\n');
+    ].filter(Boolean).join('\r\n');
 
     let contactHost = remoteAddr;
     let contactPort = this.sipPort;

@@ -67,6 +67,14 @@ function loadFromDisk(): AppConfig {
     CONFIG_webhookPublicUrl: 'webhookPublicUrl',
     CONFIG_sipDomain: 'sipDomain',
     CONFIG_operatorFallbackSip: 'operatorFallbackSip',
+    CONFIG_sipTlsCertPath: 'sipTlsCertPath',
+    CONFIG_sipTlsKeyPath: 'sipTlsKeyPath',
+    SIP_TLS_ENABLED: 'sipTlsEnabled',
+    SIP_TLS_CERT_PATH: 'sipTlsCertPath',
+    SIP_TLS_KEY_PATH: 'sipTlsKeyPath',
+    SIP_TLS_PORT: 'sipTlsPort',
+    SRTP_ENABLED: 'srtpEnabled',
+    SRTP_PROFILE: 'srtpProfile',
   };
   const envOverrides: Record<string, any> = {};
   for (const [envKey, configKey] of Object.entries(envMap)) {
@@ -77,6 +85,8 @@ function loadFromDisk(): AppConfig {
   }
   // Numeric/boolean fields
   if (process.env.CONFIG_sbcPort) envOverrides.sbcPort = parseInt(process.env.CONFIG_sbcPort, 10);
+  if (process.env.CONFIG_sipTlsPort) envOverrides.sipTlsPort = parseInt(process.env.CONFIG_sipTlsPort, 10);
+  if (process.env.SIP_TLS_PORT) envOverrides.sipTlsPort = parseInt(process.env.SIP_TLS_PORT, 10);
   if (process.env.CONFIG_maxRetries) envOverrides.maxRetries = parseInt(process.env.CONFIG_maxRetries, 10);
   if (process.env.CONFIG_maxTokens) envOverrides.maxTokens = parseInt(process.env.CONFIG_maxTokens, 10);
   if (process.env.CONFIG_transferTimeout) envOverrides.transferTimeout = parseInt(process.env.CONFIG_transferTimeout, 10);
@@ -85,7 +95,12 @@ function loadFromDisk(): AppConfig {
   if (process.env.CONFIG_topP) envOverrides.topP = parseFloat(process.env.CONFIG_topP);
   if (process.env.CONFIG_mfaEnabled === 'true') envOverrides.mfaEnabled = true;
   if (process.env.CONFIG_mfaEnabled === 'false') envOverrides.mfaEnabled = false;
+  if (process.env.CONFIG_sipTlsEnabled === 'true' || process.env.SIP_TLS_ENABLED === 'true') envOverrides.sipTlsEnabled = true;
+  if (process.env.CONFIG_sipTlsEnabled === 'false' || process.env.SIP_TLS_ENABLED === 'false') envOverrides.sipTlsEnabled = false;
+  if (process.env.CONFIG_srtpEnabled === 'true' || process.env.SRTP_ENABLED === 'true') envOverrides.srtpEnabled = true;
+  if (process.env.CONFIG_srtpEnabled === 'false' || process.env.SRTP_ENABLED === 'false') envOverrides.srtpEnabled = false;
   if (process.env.CONFIG_transferProtocol) envOverrides.transferProtocol = process.env.CONFIG_transferProtocol;
+  if (process.env.CONFIG_srtpProfile) envOverrides.srtpProfile = process.env.CONFIG_srtpProfile;
   if (process.env.CONFIG_routingMode) envOverrides.routingMode = process.env.CONFIG_routingMode;
   // Departments (JSON array)
   if (process.env.CONFIG_departments) {
@@ -166,9 +181,9 @@ export function updateConfig(patch: Partial<AppConfig>): AppConfig & { verified:
       if (!Array.isArray(value)) {
         throw new Error('Invalid departments: must be an array');
       }
-    } else if (key === 'mfaEnabled') {
+    } else if (key === 'mfaEnabled' || key === 'sipTlsEnabled' || key === 'srtpEnabled') {
       if (typeof value !== 'boolean') {
-        throw new Error(`Invalid mfaEnabled: must be a boolean`);
+        throw new Error(`Invalid ${key}: must be a boolean`);
       }
     } else if (typeof value !== 'string') {
       throw new Error(`Invalid value for ${key}: expected string`);

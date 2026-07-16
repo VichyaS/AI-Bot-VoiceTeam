@@ -37,6 +37,18 @@ export interface AppConfig {
   sipDomain: string;
   /** SBC signaling port (default 5061) */
   sbcPort: number;
+  /** Enable SIP over TLS listener (default 5061) */
+  sipTlsEnabled: boolean;
+  /** Path to TLS certificate for SIP/TLS */
+  sipTlsCertPath?: string;
+  /** Path to TLS private key for SIP/TLS */
+  sipTlsKeyPath?: string;
+  /** Port for SIP/TLS listener */
+  sipTlsPort: number;
+  /** Advertise SRTP in SDP when enabled */
+  srtpEnabled: boolean;
+  /** SRTP profile to advertise */
+  srtpProfile: string;
   /** Transfer protocol: TLS, TCP, or UDP */
   transferProtocol: string;
   /** Call routing mode: Blind Transfer or Consultative Transfer */
@@ -74,6 +86,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   webhookPublicUrl: '',
   sipDomain: 'sip:company.com',
   sbcPort: 5061,
+  sipTlsEnabled: false,
+  sipTlsCertPath: '',
+  sipTlsKeyPath: '',
+  sipTlsPort: 5061,
+  srtpEnabled: false,
+  srtpProfile: 'AES_CM_128_HMAC_SHA1_80',
   transferProtocol: 'TLS',
   routingMode: 'Blind Transfer',
   transferTimeout: 15,

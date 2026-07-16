@@ -140,7 +140,23 @@ cd admin-dashboard && npm run dev
 
 ---
 
-## 🚢 Deployment Notes
+## � Security, SIP/TLS and SRTP
+
+This release includes stronger transport defaults for production SIP deployments:
+
+- Optional SIP over TLS listener on port `5061` via `sipTlsEnabled` and `sipTlsPort`
+- Optional SRTP advertisement in SDP via `srtpEnabled` and `srtpProfile`
+- TLS certificate paths configurable through `sipTlsCertPath` and `sipTlsKeyPath`
+- Azure deployment script + Bicep template under [deploy/azure/azure-deploy.sh](deploy/azure/azure-deploy.sh) and [deploy/azure/main.bicep](deploy/azure/main.bicep)
+
+### Related docs
+
+- [docs/ssl-domain-setup-th.md](docs/ssl-domain-setup-th.md)
+- [docs/sbc-config-audiocodes-760-th.md](docs/sbc-config-audiocodes-760-th.md)
+
+---
+
+## �🚢 Deployment Notes
 
 This repository is intended to be deployed on a standard host or VM with direct access to the SIP and RTP ports. Configure the environment variables and network rules according to your target platform.
 
