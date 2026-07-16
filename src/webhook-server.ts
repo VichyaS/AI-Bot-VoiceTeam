@@ -32,7 +32,7 @@ import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
-import { startTunnel, stopTunnel, getTunnelUrl, getHttpTunnelUrl, getRtpTunnelUrl, getRtpTunnelPort } from './ngrok-tunnel.js';
+import { startTunnel, stopTunnel, getTunnelUrl, getHttpTunnelUrl } from './ngrok-tunnel.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -110,15 +110,6 @@ if (hasNgrokToken) {
       emitInfo(`[tunnel] ✅ TCP tunnel: ${hostname}:${info.port}`);
       // Set tunnel info on SIP endpoint so Contact header points through tunnel
       sipEndpoint.setTunnel(hostname, info.port);
-      // Wire up RTP-TCP tunnel for media
-      const rtpHost = getRtpTunnelUrl();
-      const rtpPort = getRtpTunnelPort();
-      if (rtpHost && rtpPort) {
-        const rtpParsed = new URL(rtpHost);
-        sipEndpoint.setRtpTunnel(rtpParsed.hostname, rtpPort);
-        console.log(`[tunnel] → SBC RTP: Host=${rtpParsed.hostname}, Port=${rtpPort}, Transport=TCP`);
-        emitInfo(`[tunnel] → SBC RTP: Host=${rtpParsed.hostname}, Port=${rtpPort}, Transport=TCP`);
-      }
     })
     .catch((err) => {
       const msg = `[tunnel] ❌ Failed: ${err.message}`;

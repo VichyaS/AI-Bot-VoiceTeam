@@ -22,7 +22,6 @@ RUN npm run build:all
 # Expose ports
 EXPOSE 8080
 EXPOSE 5060/udp
-EXPOSE 5062
 
 # Start
 CMD ["node", "dist/webhook-server.js"]
