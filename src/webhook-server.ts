@@ -530,12 +530,16 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
               switch (aiResult.target_type) {
                 // ── Extension (e.g. "ต่อ 1234") ───────────────────────
                 case 'extension': {
-                  const sipDomain = cfg.sipDomain.replace(/^sip:/iu, '');
-                  const target = `${aiResult.extracted_value}@${sipDomain}`;
-                  emitTransfer(`Routing to extension: ${aiResult.extracted_value} → sip:${target}`);
+                  const extValue = aiResult.extracted_value?.trim() || '';
+                  const isE164 = extValue.startsWith('+');
+                  const sipDomain = isE164
+                    ? 'sip.pstnhub.microsoft.com'
+                    : cfg.sipDomain.replace(/^sip:/iu, '');
+                  const target = `${extValue}@${sipDomain}`;
+                  emitTransfer(`Routing to extension: ${extValue} → sip:${target}`);
                   resetRetry(convId);
 
-                  const extResponse = generateTransferResponse(target, `กำลังโอนสายไปยังเบอร์${aiResult.extracted_value}ค่ะ`);
+                  const extResponse = generateTransferResponse(target, `กำลังโอนสายไปยังเบอร์${extValue}ค่ะ`);
                   return res.status(200).json(extResponse);
                 }
 

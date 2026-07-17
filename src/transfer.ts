@@ -11,13 +11,19 @@ function buildSipUri(target: string): string {
   const domain = cfg.sipDomain?.replace(/^sip:/iu, '') || 'company.com';
   const port = cfg.sbcPort || 5061;
   const transport = (cfg.transferProtocol || 'TLS').toLowerCase();
+  const normalizedTarget = target.replace(/^sip:/iu, '').trim();
 
   // If target is already a full SIP URI (contains @), use it as-is
-  if (target.includes('@')) {
-    return `sip:${target}:${port};transport=${transport}`;
+  if (normalizedTarget.includes('@')) {
+    return `sip:${normalizedTarget}:${port};transport=${transport}`;
   }
-  // Otherwise treat as UPN
-  return `sip:${target}:${port};transport=${transport}`;
+
+  // E.164 numbers should go to Microsoft's PSTN hub for Teams routing.
+  const targetDomain = normalizedTarget.startsWith('+')
+    ? 'sip.pstnhub.microsoft.com'
+    : domain;
+
+  return `sip:${normalizedTarget}@${targetDomain}:${port};transport=${transport}`;
 }
 
 /**
