@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildEntraUserLookupFilter, normalizePhoneForTransfer } from './graph-user.js';
+import {
+  buildEntraUserLookupFilter,
+  formatDuplicateUserChoicesForThaiTts,
+  normalizePhoneForTransfer,
+} from './graph-user.js';
 
 test('normalizePhoneForTransfer strips tel prefix and separators', () => {
   const normalized = normalizePhoneForTransfer('tel:+66 (810)-1002');
@@ -29,4 +33,14 @@ test('buildEntraUserLookupFilter escapes apostrophes and supports Thai input', (
 
   const thaiFilter = buildEntraUserLookupFilter('อุทัย');
   assert.equal(thaiFilter.includes("startswith(displayName, 'อุทัย')"), true);
+});
+
+test('formatDuplicateUserChoicesForThaiTts renders spaced last 4 digits', () => {
+  const text = formatDuplicateUserChoicesForThaiTts([
+    { displayName: 'Vichya Sripibaln', userPrincipalName: 'vichya.s@wbgood.cloud', phoneNumber: '+668101000' },
+    { displayName: 'Vichya Nttvoice', userPrincipalName: 'vichyantt@wbgood.cloud', phoneNumber: 'tel:+668101001' },
+  ]);
+
+  assert.equal(text.includes('Vichya Sripibaln เบอร์ลงท้าย 1 0 0 0'), true);
+  assert.equal(text.includes('Vichya Nttvoice เบอร์ลงท้าย 1 0 0 1'), true);
 });

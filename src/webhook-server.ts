@@ -12,7 +12,7 @@ import {
   BotActivityType,
 } from './websocket/types.js';
 import { extractThaiName } from './extract-name.js';
-import { findTeamsUserByThaiName } from './graph-user.js';
+import { findTeamsUserByThaiName, formatDuplicateUserChoicesForThaiTts } from './graph-user.js';
 import { getDepartmentSipUri } from './department-lookup.js';
 import { generateTransferResponse } from './transfer.js';
 import { generateTransferFallbackResponse } from './transfer-fallback.js';
@@ -538,6 +538,36 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                 // ── Extension (e.g. "ต่อ 1234") ───────────────────────
                 case 'extension': {
                   const extValue = aiResult.extracted_value?.trim() || '';
+
+                  // For 4-digit extensions, resolve via Entra phone numbers first.
+                  if (/^\d{4}$/u.test(extValue)) {
+                    emitEntraId(`Looking up extension '${extValue}' by phone suffix in Entra ID...`);
+                    const extLookup = await findTeamsUserByThaiName(extValue);
+
+                    if (extLookup.isDuplicate && extLookup.matches.length > 1) {
+                      const choices = formatDuplicateUserChoicesForThaiTts(extLookup.matches);
+                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
+                      const duplicateActivity: BotActivity = {
+                        type: BotActivityType.message,
+                        text: cleanTextForThaiTts(duplicatePrompt),
+                      };
+                      return res.status(200).json({ activities: [duplicateActivity] });
+                    }
+
+                    if (extLookup.transferTarget) {
+                      emitTransfer(`Routing extension ${extValue} to phone: ${extLookup.transferTarget}`);
+                      resetRetry(convId);
+                      const extResponse = generateTransferResponse(extLookup.transferTarget, `กำลังโอนสายให้ค่ะ`);
+                      return res.status(200).json(extResponse);
+                    }
+
+                    const extNotFoundActivity: BotActivity = {
+                      type: BotActivityType.message,
+                      text: cleanTextForThaiTts(`ไม่พบเบอร์ต่อ ${extValue} ในรายชื่อพนักงานค่ะ กรุณาแจ้งชื่อผู้ติดต่ออีกครั้งค่ะ`),
+                    };
+                    return res.status(200).json({ activities: [extNotFoundActivity] });
+                  }
+
                   const isE164 = extValue.startsWith('+');
                   const sipDomain = isE164
                     ? 'sip.pstnhub.microsoft.com'
@@ -546,7 +576,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   emitTransfer(`Routing to extension: ${extValue} → sip:${target}`);
                   resetRetry(convId);
 
-                  const extResponse = generateTransferResponse(target, `กำลังโอนสายไปยังเบอร์${extValue}ค่ะ`);
+                  const extResponse = generateTransferResponse(target, 'กำลังโอนสายให้ค่ะ');
                   return res.status(200).json(extResponse);
                 }
 
@@ -557,18 +587,9 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                   if (lookupResult.isDuplicate && lookupResult.matches.length > 1) {
                     // ── Duplicate names found! Inform the caller ──────────
-                    const names = lookupResult.matches
-                      .map((m) => {
-                        const normalized = (m.phoneNumber || '').replace(/^tel:/iu, '');
-                        const last4 = normalized.length >= 4 ? normalized.slice(-4) : '';
-                        const spokenLast4 = last4.split('').join(' ');
-                        return last4
-                          ? `${m.displayName} เบอร์ลงท้าย ${spokenLast4}`
-                          : `${m.displayName} ไม่พบเบอร์`;
-                      })
-                      .join(' , ');
+                    const names = formatDuplicateUserChoicesForThaiTts(lookupResult.matches);
                     emitEntraId(`Found ${lookupResult.matches.length} users matching "${aiResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบข้อมูลผู้ใช้ชื่อเดียวกัน ${lookupResult.matches.length} คน คือ ${names} กรุณาระบุชื่อหรือแผนกให้ชัดเจนยิ่งขึ้นค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),
@@ -583,7 +604,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   if (lookupResult.transferTarget) {
                     emitTransfer(`Routing to user phone: ${lookupResult.transferTarget}`);
                     resetRetry(convId);
-                    const response = generateTransferResponse(lookupResult.transferTarget, `กำลังโอนสายไปยังคุณ${aiResult.extracted_value}ค่ะ`);
+                    const response = generateTransferResponse(lookupResult.transferTarget, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(response);
                   }
 
@@ -591,7 +612,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     emitEntraId(`User '${aiResult.extracted_value}' found but has no phone number`);
                     const noPhoneActivity: BotActivity = {
                       type: BotActivityType.message,
-                      text: cleanTextForThaiTts('พบบัญชีผู้ใช้แล้ว แต่ไม่พบหมายเลขโทรศัพท์สำหรับโอนสายค่ะ'),
+                      text: cleanTextForThaiTts('พบข้อมูลผู้ใช้แล้ว แต่ยังไม่มีเบอร์สำหรับโอนสายค่ะ'),
                     };
                     return res.status(200).json({ activities: [noPhoneActivity] });
                   }
@@ -599,7 +620,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   emitEntraId(`User '${aiResult.extracted_value}' not found`);
                   const notFoundActivity: BotActivity = {
                     type: BotActivityType.message,
-                    text: cleanTextForThaiTts('ไม่พบชื่อพนักงานที่ระบุค่ะ'),
+                    text: cleanTextForThaiTts('ไม่พบข้อมูลที่ระบุค่ะ กรุณาแจ้งชื่อหรือเบอร์ต่ออีกครั้งค่ะ'),
                   };
                   return res.status(200).json({ activities: [notFoundActivity] });
                 }

@@ -63,9 +63,15 @@ export interface EntraIdLookupResult {
   /** Transfer-ready target (currently mapped from phoneNumber) */
   transferTarget: string | null;
   /** All matching users (for duplicate name detection) */
-  matches: { displayName: string; userPrincipalName: string; phoneNumber: string | null }[];
+  matches: EntraUserMatch[];
   /** Whether multiple users were found with the same name */
   isDuplicate: boolean;
+}
+
+export interface EntraUserMatch {
+  displayName: string;
+  userPrincipalName: string;
+  phoneNumber: string | null;
 }
 
 interface GraphUserRecord {
@@ -97,6 +103,40 @@ export function buildEntraUserLookupFilter(name: string): string {
     `startswith(surname, '${escapedName}')`,
     `startswith(mail, '${escapedName}')`,
   ].join(' or ');
+}
+
+function isFourDigitExtension(value: string): boolean {
+  return /^\d{4}$/u.test(value.trim());
+}
+
+export function formatDuplicateUserChoicesForThaiTts(matches: readonly EntraUserMatch[]): string {
+  return matches
+    .map((m) => {
+      const normalized = (m.phoneNumber || '').replace(/^tel:/iu, '');
+      const last4 = normalized.length >= 4 ? normalized.slice(-4) : '';
+      const spokenLast4 = last4.split('').join(' ');
+      return last4
+        ? `${m.displayName} เบอร์ลงท้าย ${spokenLast4}`
+        : `${m.displayName} ไม่พบเบอร์`;
+    })
+    .join(' , ');
+}
+
+async function queryGraphUsers(
+  graphClient: Client,
+  options?: { filter?: string; top?: number },
+): Promise<GraphUserRecord[]> {
+  let request = graphClient.api('/users');
+  if (options?.filter) {
+    request = request.filter(options.filter);
+  }
+
+  const result = await request
+    .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+    .top(options?.top ?? 10)
+    .get() as { value: GraphUserRecord[] };
+
+  return result.value || [];
 }
 
 function pickPhoneNumber(user: GraphUserRecord): string | null {
@@ -143,7 +183,8 @@ export async function findTeamsUserByThaiName(
     return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
   }
 
-  const key = name.trim().toLowerCase();
+  const query = name.trim();
+  const key = query.toLowerCase();
 
   // ── Check in-memory cache before calling Graph API ────────────────
   const cached = entraIdCache.get(key);
@@ -171,17 +212,58 @@ export async function findTeamsUserByThaiName(
   if (!graphClient) return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
 
   try {
+    if (isFourDigitExtension(query)) {
+      const users = await queryGraphUsers(graphClient, { top: 200 });
+      const mappedUsers = users.map((u): EntraUserMatch => ({
+        displayName: u.displayName || '',
+        userPrincipalName: u.userPrincipalName || '',
+        phoneNumber: pickPhoneNumber(u),
+      }));
+
+      const extensionMatches = mappedUsers.filter((u) => (u.phoneNumber || '').endsWith(query));
+
+      if (extensionMatches.length === 0) {
+        console.log(`[findTeamsUserByThaiName] No user found matching extension: "${query}"`);
+        negativeCache.set(key, true);
+        return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
+      }
+
+      if (extensionMatches.length > 1) {
+        console.log(`[findTeamsUserByThaiName] Found ${extensionMatches.length} users matching extension "${query}"`);
+        return {
+          upn: null,
+          phoneNumber: null,
+          transferTarget: null,
+          matches: extensionMatches,
+          isDuplicate: true,
+        };
+      }
+
+      const matched = extensionMatches[0];
+      if (!matched.phoneNumber) {
+        negativeCache.set(key, true);
+        return {
+          upn: matched.userPrincipalName || null,
+          phoneNumber: null,
+          transferTarget: null,
+          matches: [matched],
+          isDuplicate: false,
+        };
+      }
+
+      entraIdCache.set(key, matched.phoneNumber);
+      return {
+        upn: matched.userPrincipalName || null,
+        phoneNumber: matched.phoneNumber,
+        transferTarget: matched.phoneNumber,
+        matches: [matched],
+        isDuplicate: false,
+      };
+    }
+
     // Support lookup by displayName, username (UPN/mail), first name, and last name.
-    const filter = buildEntraUserLookupFilter(name);
-
-    const result = await graphClient
-      .api('/users')
-      .filter(filter)
-      .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
-      .top(10)
-      .get() as { value: GraphUserRecord[] };
-
-    const users = result.value || [];
+    const filter = buildEntraUserLookupFilter(query);
+    const users = await queryGraphUsers(graphClient, { filter, top: 10 });
 
     if (!users || users.length === 0) {
       console.log(`[findTeamsUserByThaiName] No user found matching name: "${name}"`);
@@ -189,7 +271,7 @@ export async function findTeamsUserByThaiName(
       return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
     }
 
-    const mappedUsers = users.map((u) => ({
+    const mappedUsers = users.map((u): EntraUserMatch => ({
       displayName: u.displayName || '',
       userPrincipalName: u.userPrincipalName || '',
       phoneNumber: pickPhoneNumber(u),

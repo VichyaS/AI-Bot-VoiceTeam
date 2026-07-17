@@ -105,3 +105,63 @@ test('findTeamsUserByThaiName returns match without transfer target when phone i
   assert.equal(result.transferTarget, null);
   assert.equal(result.matches.length, 1);
 });
+
+test('findTeamsUserByThaiName resolves 4-digit extension to unique phone transfer target', async () => {
+  clearEntraIdCache();
+  configureTestCredentials();
+
+  const mock = new MockGraphClient([
+    {
+      displayName: 'Wiphanee Boonsing',
+      userPrincipalName: 'wiphanee.b@wbgood.cloud',
+      businessPhones: ['tel:+668101002'],
+      mobilePhone: null,
+    },
+    {
+      displayName: 'Yi Kang Goh',
+      userPrincipalName: 'kang.goh@wbgood.cloud',
+      businessPhones: ['tel:+668101005'],
+      mobilePhone: null,
+    },
+  ]);
+
+  setGraphClientForTesting(mock as never);
+
+  const result = await findTeamsUserByThaiName('1002');
+
+  assert.equal(result.isDuplicate, false);
+  assert.equal(result.phoneNumber, '+668101002');
+  assert.equal(result.transferTarget, '+668101002');
+  assert.equal(result.matches.length, 1);
+  assert.equal(mock.lastTop, 200);
+});
+
+test('findTeamsUserByThaiName returns duplicate list for 4-digit extension collisions', async () => {
+  clearEntraIdCache();
+  configureTestCredentials();
+
+  const mock = new MockGraphClient([
+    {
+      displayName: 'Vichya Sripibaln',
+      userPrincipalName: 'vichya.s@wbgood.cloud',
+      businessPhones: ['tel:+668101000'],
+      mobilePhone: null,
+    },
+    {
+      displayName: 'Guest Vichya',
+      userPrincipalName: 'guest.vichya@wbgood.cloud',
+      businessPhones: ['tel:+669001000'],
+      mobilePhone: null,
+    },
+  ]);
+
+  setGraphClientForTesting(mock as never);
+
+  const result = await findTeamsUserByThaiName('1000');
+
+  assert.equal(result.isDuplicate, true);
+  assert.equal(result.transferTarget, null);
+  assert.equal(result.matches.length, 2);
+  assert.equal(result.matches[0]?.displayName, 'Vichya Sripibaln');
+  assert.equal(result.matches[1]?.displayName, 'Guest Vichya');
+});
