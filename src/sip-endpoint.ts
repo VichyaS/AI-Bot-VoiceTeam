@@ -37,7 +37,7 @@ interface ActiveCall {
   seq: number;
   remoteAddr: string;
   remotePort: number;
-  transport: 'udp' | 'tcp';
+  transport: 'udp' | 'tcp' | 'tls';
   tcpSocket?: import('node:net').Socket;
   sbcIp?: string; // SBC's real IP (from Via header), for Contact header in TCP calls
   sbcMediaHost?: string; // SBC's media IP from INVITE SDP
@@ -263,15 +263,12 @@ export class SipMediaEndpoint extends EventEmitter {
     const call = this.calls.get(sessionId);
     if (!call) return;
 
-    const transportParam = call.transport === 'tcp' ? ';transport=tcp' : '';
-    let contactHost = this.getLocalIp();
-    let contactPort = this.sipPort;
-    if (call.sbcIp) {
-      contactHost = call.sbcIp;
-    }
+    const transportParam = call.transport === 'udp' ? '' : `;transport=${call.transport}`;
+    const contactHost = this.getLocalIp();
+    const contactPort = call.transport === 'tls' ? this.tlsPort : this.sipPort;
     const referMsg = [
       `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
-      `Via: SIP/2.0/${call.transport === 'tcp' ? 'TCP' : 'UDP'} ${this.getLocalIp()}:${this.sipPort}`,
+      `Via: SIP/2.0/${call.transport === 'tls' ? 'TLS' : call.transport.toUpperCase()} ${this.getLocalIp()}:${contactPort}`,
       `From: <sip:bot@${this.getLocalIp()}>;tag=${call.tag}`,
       `To: <sip:${call.callee}@${this.getLocalIp()}>`,
       `Call-ID: ${call.callId}`,
@@ -362,7 +359,10 @@ export class SipMediaEndpoint extends EventEmitter {
     const tag = `bot-${Date.now()}`;
     const sessionId = callId;
 
-    const transport = tcpSocket ? 'tcp' : 'udp';
+    const via = (msg.headers.via || '').toUpperCase();
+    const transport: ActiveCall['transport'] = tcpSocket
+      ? (via.includes('SIP/2.0/TLS') ? 'tls' : 'tcp')
+      : 'udp';
     // Extract SBC's real IP from Via header (for TCP calls)
     let sbcIp: string | undefined;
     if (tcpSocket) {
@@ -411,13 +411,9 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // ── Build SDP — loop audio back through SBC's media processor ─
-    // The SBC's StreamsConnector bridges phone ↔ bot sides.
-    // By pointing the SDP back to the SBC's own IP:mediaPort, the SBC
-    // sends phone audio to itself, creating a hairpin loop through the
-    // StreamsConnector so the phone hears audio (even without bot RTP).
-    const sdpMediaHost = tcpSocket && sbcIp ? sbcIp : '127.0.0.1';
-    const sdpMediaPort = tcpSocket && sbcIp && sbcMediaPort ? sbcMediaPort : myPort;
+    // Advertise bot media endpoint and avoid SDP hairpin back to SBC.
+    const sdpMediaHost = this.getLocalIp();
+    const sdpMediaPort = myPort;
     const cryptoLine = this.srtpEnabled ? `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQ1N1R0J1Q2N3R4T5V6W7X8Y9Z0` : '';
     const sdp = [
       'v=0',
@@ -429,14 +425,11 @@ export class SipMediaEndpoint extends EventEmitter {
       'a=rtpmap:0 PCMU/8000',
       'a=sendrecv',
       cryptoLine,
-      '',
-    ].filter(Boolean).join('\r\n');
+    ].filter(Boolean).join('\r\n') + '\r\n';
 
-    let contactHost = remoteAddr;
-    let contactPort = this.sipPort;
-    if (tcpSocket && sbcIp) {
-      contactHost = sbcIp;
-    }
+    const contactHost = this.getLocalIp();
+    const contactPort = transport === 'tls' ? this.tlsPort : this.sipPort;
+    const contactTransportParam = transport === 'udp' ? '' : `;transport=${transport}`;
 
     const response = [
       `SIP/2.0 200 OK`,
@@ -445,7 +438,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `To: ${to};tag=${tag}`,
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 INVITE'}`,
-      `Contact: <sip:bot@${contactHost}:${contactPort}${tcpSocket ? ';transport=tcp' : ''}>`,
+      `Contact: <sip:bot@${contactHost}:${contactPort}${contactTransportParam}>`,
       `Content-Type: application/sdp`,
       `Content-Length: ${Buffer.byteLength(sdp)}`,
       '',
