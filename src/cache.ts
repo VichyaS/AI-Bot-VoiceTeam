@@ -46,7 +46,7 @@ export class TtlCache<T> {
 
 /* ── Singleton caches ─────────────────────────────────────────────── */
 
-/** Cache for Entra ID user lookups: name → UPN (TTL: 5 minutes) */
+/** Cache for Entra ID user lookups: query → normalized transfer phone (TTL: 5 minutes) */
 export const entraIdCache = new TtlCache<string | null>(5 * 60_000);
 
 /** Cache for department routing table keyed by config checksum */

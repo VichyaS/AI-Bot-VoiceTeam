@@ -47,10 +47,59 @@ export function clearEntraIdCache(): void {
 export interface EntraIdLookupResult {
   /** The matched user's UPN, or null if no unique match */
   upn: string | null;
+  /** The matched user's phone number (tel: removed), or null if missing */
+  phoneNumber: string | null;
+  /** Transfer-ready target (currently mapped from phoneNumber) */
+  transferTarget: string | null;
   /** All matching users (for duplicate name detection) */
-  matches: { displayName: string; userPrincipalName: string }[];
+  matches: { displayName: string; userPrincipalName: string; phoneNumber: string | null }[];
   /** Whether multiple users were found with the same name */
   isDuplicate: boolean;
+}
+
+interface GraphUserRecord {
+  displayName?: string;
+  userPrincipalName?: string;
+  givenName?: string;
+  surname?: string;
+  mail?: string;
+  businessPhones?: string[];
+  mobilePhone?: string;
+}
+
+export function normalizePhoneForTransfer(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const normalized = raw
+    .trim()
+    .replace(/^tel:/iu, '')
+    .replace(/[\s()-]/gu, '');
+
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function buildEntraUserLookupFilter(name: string): string {
+  const escapedName = name.trim().replace(/'/g, "''");
+  return [
+    `startswith(displayName, '${escapedName}')`,
+    `startswith(userPrincipalName, '${escapedName}')`,
+    `startswith(givenName, '${escapedName}')`,
+    `startswith(surname, '${escapedName}')`,
+    `startswith(mail, '${escapedName}')`,
+  ].join(' or ');
+}
+
+function pickPhoneNumber(user: GraphUserRecord): string | null {
+  const candidates: (string | null | undefined)[] = [
+    user.businessPhones?.[0],
+    user.mobilePhone,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizePhoneForTransfer(candidate);
+    if (normalized) return normalized;
+  }
+
+  return null;
 }
 
 /**
@@ -76,11 +125,11 @@ export async function findTeamsUserByThaiName(
     console.error(
       '[findTeamsUserByThaiName] Missing Azure credentials.',
     );
-    return { upn: null, matches: [], isDuplicate: false };
+    return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
   }
 
   if (!name || name.trim().length === 0) {
-    return { upn: null, matches: [], isDuplicate: false };
+    return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
   }
 
   const key = name.trim().toLowerCase();
@@ -90,56 +139,94 @@ export async function findTeamsUserByThaiName(
   if (cached !== undefined) {
     console.log(`[findTeamsUserByThaiName] Cache hit for "${name}": ${cached ?? 'null'}`);
     if (cached === null) {
-      return { upn: null, matches: [], isDuplicate: false };
+      return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
     }
-    return { upn: cached, matches: [{ displayName: name, userPrincipalName: cached }], isDuplicate: false };
+    return {
+      upn: null,
+      phoneNumber: cached,
+      transferTarget: cached,
+      matches: [{ displayName: name, userPrincipalName: '', phoneNumber: cached }],
+      isDuplicate: false,
+    };
   }
 
   // Check negative cache (previously not found)
   if (negativeCache.get(key) !== undefined) {
     console.log(`[findTeamsUserByThaiName] Negative cache hit for "${name}"`);
-    return { upn: null, matches: [], isDuplicate: false };
+    return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
   }
 
   const graphClient = getGraphClient();
-  if (!graphClient) return { upn: null, matches: [], isDuplicate: false };
+  if (!graphClient) return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
 
   try {
-    // Filter users whose displayName starts with the provided name (case-insensitive by default)
-    const filter = `startswith(displayName, '${name.replace(/'/g, "''")}')`;
+    // Support lookup by displayName, username (UPN/mail), first name, and last name.
+    const filter = buildEntraUserLookupFilter(name);
 
     const result = await graphClient
       .api('/users')
       .filter(filter)
-      .select(['userPrincipalName', 'displayName'])
-      .top(5)
-      .get() as { value: { userPrincipalName: string; displayName: string }[] };
+      .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+      .top(10)
+      .get() as { value: GraphUserRecord[] };
 
-    const users = result.value;
+    const users = result.value || [];
 
     if (!users || users.length === 0) {
       console.log(`[findTeamsUserByThaiName] No user found matching name: "${name}"`);
       negativeCache.set(key, true);
-      return { upn: null, matches: [], isDuplicate: false };
+      return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
     }
+
+    const mappedUsers = users.map((u) => ({
+      displayName: u.displayName || '',
+      userPrincipalName: u.userPrincipalName || '',
+      phoneNumber: pickPhoneNumber(u),
+    }));
 
     // Check for duplicate names
-    if (users.length > 1) {
+    if (mappedUsers.length > 1) {
       console.log(`[findTeamsUserByThaiName] Found ${users.length} users matching "${name}":`);
-      for (const u of users) {
-        console.log(`  - ${u.displayName} <${u.userPrincipalName}>`);
+      for (const u of mappedUsers) {
+        console.log(`  - ${u.displayName} <${u.userPrincipalName}> phone=${u.phoneNumber ?? 'n/a'}`);
       }
       // Don't cache duplicate results — caller needs to disambiguate
-      return { upn: null, matches: users, isDuplicate: true };
+      return {
+        upn: null,
+        phoneNumber: null,
+        transferTarget: null,
+        matches: mappedUsers,
+        isDuplicate: true,
+      };
     }
 
-    const matched = users[0];
+    const matched = mappedUsers[0];
+    const matchedPhone = matched.phoneNumber;
     console.log(
-      `[findTeamsUserByThaiName] Found user: ${matched.displayName} <${matched.userPrincipalName}>`,
+      `[findTeamsUserByThaiName] Found user: ${matched.displayName} <${matched.userPrincipalName}> phone=${matchedPhone ?? 'n/a'}`,
     );
-    // Cache the result
-    entraIdCache.set(key, matched.userPrincipalName);
-    return { upn: matched.userPrincipalName, matches: [matched], isDuplicate: false };
+
+    if (!matchedPhone) {
+      console.log(`[findTeamsUserByThaiName] User matched but no phone number: "${name}"`);
+      negativeCache.set(key, true);
+      return {
+        upn: matched.userPrincipalName || null,
+        phoneNumber: null,
+        transferTarget: null,
+        matches: [matched],
+        isDuplicate: false,
+      };
+    }
+
+    // Cache the normalized phone number for transfer.
+    entraIdCache.set(key, matchedPhone);
+    return {
+      upn: matched.userPrincipalName || null,
+      phoneNumber: matchedPhone,
+      transferTarget: matchedPhone,
+      matches: [matched],
+      isDuplicate: false,
+    };
   } catch (error: any) {
     const msg = error?.message ?? String(error);
 
@@ -155,6 +242,6 @@ export async function findTeamsUserByThaiName(
     }
 
     console.error('[findTeamsUserByThaiName] Graph API error:', error);
-    return { upn: null, matches: [], isDuplicate: false };
+    return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
   }
 }

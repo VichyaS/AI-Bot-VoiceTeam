@@ -557,7 +557,15 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                   if (lookupResult.isDuplicate && lookupResult.matches.length > 1) {
                     // ── Duplicate names found! Inform the caller ──────────
-                    const names = lookupResult.matches.map((m) => m.displayName).join(', ');
+                    const names = lookupResult.matches
+                      .map((m) => {
+                        const normalized = (m.phoneNumber || '').replace(/^tel:/iu, '');
+                        const last4 = normalized.length >= 4 ? normalized.slice(-4) : '';
+                        return last4
+                          ? `${m.displayName} เบอร์ลงท้าย ${last4}`
+                          : `${m.displayName} ไม่พบเบอร์`;
+                      })
+                      .join(', ');
                     emitEntraId(`Found ${lookupResult.matches.length} users matching "${aiResult.extracted_value}": ${names}`);
                     const duplicatePrompt = `พบข้อมูลผู้ใช้ชื่อเดียวกัน ${lookupResult.matches.length} คน คือ ${names} กรุณาระบุชื่อหรือแผนกให้ชัดเจนยิ่งขึ้นค่ะ`;
                     const duplicateActivity: BotActivity = {
@@ -568,11 +576,23 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   }
 
                   if (lookupResult.upn) {
-                    emitEntraId(`Found UPN: ${lookupResult.upn}`);
-                    emitTransfer(`Routing to user: ${lookupResult.upn}`);
+                    emitEntraId(`Found user: ${lookupResult.upn} phone=${lookupResult.phoneNumber ?? 'n/a'}`);
+                  }
+
+                  if (lookupResult.transferTarget) {
+                    emitTransfer(`Routing to user phone: ${lookupResult.transferTarget}`);
                     resetRetry(convId);
-                    const response = generateTransferResponse(lookupResult.upn, `กำลังโอนสายไปยังคุณ${aiResult.extracted_value}ค่ะ`);
+                    const response = generateTransferResponse(lookupResult.transferTarget, `กำลังโอนสายไปยังคุณ${aiResult.extracted_value}ค่ะ`);
                     return res.status(200).json(response);
+                  }
+
+                  if (lookupResult.matches.length === 1 && !lookupResult.transferTarget) {
+                    emitEntraId(`User '${aiResult.extracted_value}' found but has no phone number`);
+                    const noPhoneActivity: BotActivity = {
+                      type: BotActivityType.message,
+                      text: cleanTextForThaiTts('พบบัญชีผู้ใช้แล้ว แต่ไม่พบหมายเลขโทรศัพท์สำหรับโอนสายค่ะ'),
+                    };
+                    return res.status(200).json({ activities: [noPhoneActivity] });
                   }
 
                   emitEntraId(`User '${aiResult.extracted_value}' not found`);
