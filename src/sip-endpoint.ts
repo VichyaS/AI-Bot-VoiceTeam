@@ -555,6 +555,10 @@ export class SipMediaEndpoint extends EventEmitter {
     return { method, code, headers, body };
   }
 
+  private shouldSuppressIncomingMonitorLog(caller: string): boolean {
+    return caller.trim() === '101';
+  }
+
   private handleInvite(msg: SipMessage, remoteAddr: string, remotePort: number, tcpSocket?: import('node:net').Socket): void {
     const callId = msg.headers['call-id'] || `call-${Date.now()}`;
     const from = msg.headers['from'] || '';
@@ -613,8 +617,10 @@ export class SipMediaEndpoint extends EventEmitter {
     };
     this.calls.set(sessionId, call);
 
-    emitInfo(`[SIP] Incoming call from ${caller} to ${callee}`);
-    emitCallEvent('call-started', sessionId, caller);
+    if (!this.shouldSuppressIncomingMonitorLog(caller)) {
+      emitInfo(`[SIP] Incoming call from ${caller} to ${callee}`);
+      emitCallEvent('call-started', sessionId, caller);
+    }
 
     // Create RTP socket for receiving audio
     const rtpSocket = createSocket('udp4');
