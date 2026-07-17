@@ -158,6 +158,80 @@ This release includes stronger transport defaults for production SIP deployments
 - [docs/ssl-domain-setup-th.md](docs/ssl-domain-setup-th.md)
 - [docs/sbc-config-audiocodes-760-th.md](docs/sbc-config-audiocodes-760-th.md)
 
+### AudioCodes SBC Final Config (TLS 5061)
+
+สรุปค่าตั้งต้นที่แนะนำสำหรับ AudioCodes SBC 7.60 เพื่อใช้งานกับ Voice Bot ผ่าน SIP/TLS ให้เสถียร (ลดโอกาส `OPTIONS` ตอบ `200 OK` แล้วตามด้วย transport reset)
+
+#### 1) IP Profile (`IPP-VoiceAI`)
+
+| Field | Recommended value |
+|------|--------------------|
+| SIP UPDATE Support | Supported |
+| Remote re-INVITE | Supported |
+| Session Expires Mode | Transparent |
+| Allowed Audio Coders | G711 |
+| Media Security Mode | Not Secured (ถ้ายังไม่ใช้ SRTP) |
+| Remote REFER Mode | Transparent |
+| Remote 3xx Mode | Transparent |
+| RFC2833 DTMF Payload Type | 101 |
+
+#### 2) IP Group (`IPG-VoiceAI`)
+
+| Field | Recommended value |
+|------|--------------------|
+| Type | Server |
+| Proxy Set | `PS-VoiceAI` |
+| IP Profile | `IPP-VoiceAI` |
+| Proxy Keep-Alive using IP Group | Enable |
+| SIP Connect | Yes |
+| Dedicated Connection Mode | Enable |
+| Registration Mode | No Registration (หรือเทียบเท่า static peer) |
+| Authentication Mode | None/Do Not Authenticate (กรณีไม่ใช้ REGISTER) |
+| Validate Source IP | Enable (เมื่อปลายทางมี IP/FQDN ชัดเจน) |
+
+#### 3) Proxy Set (`PS-VoiceAI`)
+
+| Field | Recommended value |
+|------|--------------------|
+| Proxy Address Type | TLS |
+| Proxy Keep-Alive | Using OPTIONS |
+| Proxy Keep-Alive Time | 20-30 sec |
+| TCP/TLS Connection Reuse | Enable (explicit, ไม่ใช้ global inherited) |
+| TLS Remote Subject Name | `voiceaibot.nttvoice.com` (หรือ FQDN ปลายทางจริง) |
+| Peer Host Name Verification | Enable |
+| Success Detection Retries | 2 |
+| Failure Detection Retransmissions | 2-3 |
+
+#### 4) SIP Interface (`SI-ACS`)
+
+| Field | Recommended value |
+|------|--------------------|
+| Application Type | SBC |
+| TLS Port | 5061 |
+| UDP Port / TCP Port | 0 / 0 (TLS-only) |
+| Enable TCP Keepalive | Enable |
+| TLS Context Name | `ACS-SBC` |
+| Classify By Registration DB | Disable |
+| Direct Media | Disable |
+
+#### 5) TLS Context (`ACS-SBC`)
+
+| Field | Recommended value |
+|------|--------------------|
+| TLS Version | TLSv1.2, TLSv1.3 |
+| Use Strict Certificate Validation | Enable |
+| TLS Renegotiation | Disable |
+| Use default CA Bundle | Enable |
+| Server Certificate | CN/SAN ตรงกับโดเมนของ SBC |
+| Trusted Root Certificates | ครบตาม chain ของปลายทาง |
+
+#### Quick validation checklist
+
+1. SBC ส่ง `OPTIONS` ทุก 20-30 วินาที และได้รับ `200 OK` ต่อเนื่องอย่างน้อย 3 รอบ
+2. ไม่มี `Transport Error` หลังรับ `200 OK`
+3. Proxy Set แสดงสถานะ Connected ต่อเนื่อง
+4. TLS subject/hostname verification ผ่าน (ชื่อโดเมนตรงกับ cert)
+
 ---
 
 ## �🚢 Deployment Notes
