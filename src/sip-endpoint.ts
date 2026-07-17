@@ -235,6 +235,8 @@ export class SipMediaEndpoint extends EventEmitter {
     const sipMsg = this.parseSipMessage(text);
     if (sipMsg.method === 'INVITE') {
       this.handleInvite(sipMsg, remoteAddr, remotePort, tcpSocket);
+    } else if (sipMsg.method === 'OPTIONS') {
+      this.handleOptions(sipMsg, remoteAddr, remotePort, tcpSocket);
     } else if (sipMsg.method === 'ACK') {
       this.handleAck(sipMsg);
     } else if (sipMsg.method === 'BYE') {
@@ -464,6 +466,38 @@ export class SipMediaEndpoint extends EventEmitter {
     // ACK received — call is established
     const callId = msg.headers['call-id'] || '';
     emitInfo(`[SIP] ACK received — call ${callId} established`);
+  }
+
+  private handleOptions(
+    msg: SipMessage,
+    remoteAddr: string,
+    remotePort: number,
+    tcpSocket?: import('node:net').Socket,
+  ): void {
+    const toHeader = msg.headers.to || '';
+    const toWithTag = toHeader.includes('tag=') ? toHeader : `${toHeader};tag=bot-${Date.now()}`;
+
+    const response = [
+      'SIP/2.0 200 OK',
+      `Via: ${msg.headers.via || ''}`,
+      `From: ${msg.headers.from || ''}`,
+      `To: ${toWithTag}`,
+      `Call-ID: ${msg.headers['call-id'] || `opt-${Date.now()}`}`,
+      `CSeq: ${msg.headers.cseq || '1 OPTIONS'}`,
+      'Allow: REGISTER,OPTIONS,INVITE,ACK,CANCEL,BYE,NOTIFY,PRACK,REFER,INFO,SUBSCRIBE,UPDATE',
+      'Accept: application/sdp, application/simple-message-summary, message/sipfrag',
+      'Content-Length: 0',
+      '',
+    ].join('\r\n');
+
+    const responseBuf = Buffer.from(response);
+    if (tcpSocket && !tcpSocket.destroyed) {
+      tcpSocket.write(responseBuf);
+    } else {
+      this.sipSocket.send(responseBuf, remotePort, remoteAddr);
+    }
+
+    emitInfo(`[SIP] Responded 200 OK to OPTIONS from ${remoteAddr}:${remotePort}`);
   }
 
   private handleBye(msg: SipMessage): void {
