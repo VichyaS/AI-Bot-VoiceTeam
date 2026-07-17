@@ -16,6 +16,11 @@ test('normalizePhoneForTransfer handles lineUri style values', () => {
   assert.equal(normalized, '+668101001');
 });
 
+test('normalizePhoneForTransfer handles TelephoneNumbers style values', () => {
+  const normalized = normalizePhoneForTransfer('+668101003');
+  assert.equal(normalized, '+668101003');
+});
+
 test('normalizePhoneForTransfer returns null for blank values', () => {
   assert.equal(normalizePhoneForTransfer('   '), null);
   assert.equal(normalizePhoneForTransfer(null), null);

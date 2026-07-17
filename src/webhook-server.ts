@@ -314,6 +314,10 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
                     emitTransfer(`Transfer to: ${target}`);
                     sipEndpoint.sendTransfer(sessionId, target);
                   }
+                  if (activity.type === 'event' && activity.name === 'hangup') {
+                    emitInfo(`Sending SIP BYE for session ${sessionId} (forced hangup intent)`);
+                    sipEndpoint.sendBye(sessionId);
+                  }
                 }
               })().catch((err) => console.error('[sip] Failed to play bot response:', err));
             })

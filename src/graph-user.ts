@@ -82,10 +82,17 @@ interface GraphUserRecord {
   surname?: string;
   mail?: string;
   telephoneNumber?: string;
+  TelephoneNumber?: string;
+  telephoneNumbers?: string[];
+  TelephoneNumbers?: string[];
   lineUri?: string;
   lineURI?: string;
+  LineUri?: string;
+  LineURI?: string;
   businessPhones?: string[];
+  BusinessPhones?: string[];
   mobilePhone?: string;
+  MobilePhone?: string;
 }
 
 const USER_SELECT_FIELDS = [
@@ -133,12 +140,25 @@ function getPhoneLast4(raw: string | null | undefined): string | null {
 }
 
 function getPhoneCandidates(user: GraphUserRecord): string[] {
+  const anyUser = user as Record<string, unknown>;
+  const altTelephoneNumbers = Array.isArray(anyUser.TelephoneNumbers)
+    ? anyUser.TelephoneNumbers as string[]
+    : Array.isArray(anyUser.telephoneNumbers)
+      ? anyUser.telephoneNumbers as string[]
+      : [];
+
   const rawCandidates: (string | null | undefined)[] = [
     user.lineUri,
     user.lineURI,
+    user.LineUri,
+    user.LineURI,
     user.telephoneNumber,
+    user.TelephoneNumber,
+    ...altTelephoneNumbers,
     ...(user.businessPhones || []),
+    ...(user.BusinessPhones || []),
     user.mobilePhone,
+    user.MobilePhone,
   ];
 
   const unique = new Set<string>();

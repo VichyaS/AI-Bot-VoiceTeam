@@ -428,6 +428,50 @@ export class SipMediaEndpoint extends EventEmitter {
     emitTransfer(`[SIP] Sent REFER to ${referTarget}`);
   }
 
+  // ── Send SIP BYE (hangup) ───────────────────────────────────────
+  sendBye(sessionId: string, reason = 'Caller requested hangup'): void {
+    const call = this.calls.get(sessionId);
+    if (!call) return;
+
+    const contactHost = this.getAdvertisedSipHost();
+    const contactPort = call.transport === 'tls' ? this.tlsPort : this.sipPort;
+    const transportParam = call.transport === 'udp' ? '' : `;transport=${call.transport}`;
+    const requestUri = call.remoteTargetUri || `sip:${call.caller}@${call.remoteAddr}:${call.remotePort}`;
+    const fromHeader = call.localDialogUri || `<sip:${call.callee}@${contactHost}>;tag=${call.tag}`;
+    const toHeader = call.remoteDialogUri || `<sip:${call.caller}@${call.remoteAddr}:${call.remotePort}>`;
+    const viaBranch = `z9hG4bK${Date.now()}${Math.floor(Math.random() * 10000)}`;
+
+    const byeMsg = [
+      `BYE ${requestUri} SIP/2.0`,
+      `Via: SIP/2.0/${call.transport === 'tls' ? 'TLS' : call.transport.toUpperCase()} ${this.getLocalIp()}:${contactPort};branch=${viaBranch}`,
+      'Max-Forwards: 70',
+      `From: ${fromHeader}`,
+      `To: ${toHeader}`,
+      `Call-ID: ${call.callId}`,
+      `CSeq: ${++call.seq} BYE`,
+      `Contact: <sip:bot@${contactHost}:${contactPort}${transportParam}>`,
+      `Reason: ${reason}`,
+      'Content-Length: 0',
+      '',
+      '',
+    ].join('\r\n');
+
+    const buf = Buffer.from(byeMsg);
+    if (call.tcpSocket && !call.tcpSocket.destroyed) {
+      call.tcpSocket.write(buf);
+    } else {
+      this.sipSocket.send(buf, call.remotePort, call.remoteAddr);
+    }
+
+    emitInfo(`[SIP] Sent BYE for session ${sessionId}`);
+
+    // Local cleanup right away to avoid dangling RTP/ASR resources.
+    const rtpSock = this.rtpSockets.get(sessionId);
+    if (rtpSock) { rtpSock.close(); this.rtpSockets.delete(sessionId); }
+    this.calls.delete(sessionId);
+    if (this.onCallEnded) this.onCallEnded(sessionId);
+  }
+
   // ── Private methods ──────────────────────────────────────────
 
   private getLocalIp(): string {
