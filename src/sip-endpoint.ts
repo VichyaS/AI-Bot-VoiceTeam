@@ -280,6 +280,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `Contact: <sip:bot@${contactHost}:${contactPort}${transportParam}>`,
       'Content-Length: 0',
       '',
+      '',
     ].join('\r\n');
 
     const buf = Buffer.from(referMsg);
@@ -488,6 +489,7 @@ export class SipMediaEndpoint extends EventEmitter {
       'Accept: application/sdp, application/simple-message-summary, message/sipfrag',
       'Content-Length: 0',
       '',
+      '',
     ].join('\r\n');
 
     const responseBuf = Buffer.from(response);
@@ -530,6 +532,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `CSeq: ${msg.headers.cseq || '1 BYE'}`,
       'Content-Length: 0',
       '',
+      '',
     ].join('\r\n');
 
     const responseBuf = Buffer.from(response);
@@ -559,6 +562,7 @@ export class SipMediaEndpoint extends EventEmitter {
       `Call-ID: ${callId}`,
       `CSeq: ${msg.headers.cseq || '1 CANCEL'}`,
       'Content-Length: 0',
+      '',
       '',
     ].join('\r\n');
 
