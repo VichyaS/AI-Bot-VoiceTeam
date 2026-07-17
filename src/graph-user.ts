@@ -238,6 +238,65 @@ function maskPhoneForLog(phone: string): string {
   return `***${digits.slice(-4)}`;
 }
 
+function normalizeNameForMatch(value: string | null | undefined): string {
+  return (value || '').trim().toLowerCase().replace(/\s+/gu, '');
+}
+
+function userMatchesName(user: GraphUserRecord, query: string): boolean {
+  const q = normalizeNameForMatch(query);
+  if (!q) return false;
+
+  const fields = [
+    user.displayName,
+    user.givenName,
+    user.surname,
+    user.userPrincipalName,
+    user.mail,
+  ];
+
+  return fields.some((f) => normalizeNameForMatch(f).includes(q));
+}
+
+function logUserPhoneDiagnostics(prefix: string, users: readonly GraphUserRecord[]): void {
+  const withPhone = users.filter((u) => getPhoneCandidates(u).length > 0).length;
+  const sample = users.slice(0, 5).map((u) => {
+    const candidates = getPhoneCandidates(u).map(maskPhoneForLog).join('|') || 'none';
+    return `${u.displayName || 'n/a'} tel=${u.telephoneNumber ? 'yes' : 'no'} lineUri=${u.lineUri || u.lineURI ? 'yes' : 'no'} phones=${candidates}`;
+  }).join('; ');
+
+  console.log(`[findTeamsUserByThaiName][diag] ${prefix} users=${users.length} withPhone=${withPhone} sample=[${sample}]`);
+}
+
+async function scanUsersByNameContains(
+  graphClient: Client,
+  query: string,
+): Promise<EntraUserMatch[]> {
+  const matches: EntraUserMatch[] = [];
+  let nextLink: string | null = null;
+  let pages = 0;
+
+  do {
+    const page = await queryGraphUsersPage(graphClient, nextLink ? { path: nextLink } : { top: 200 });
+    pages += 1;
+
+    for (const u of page.users) {
+      if (userMatchesName(u, query)) {
+        matches.push({
+          displayName: u.displayName || '',
+          userPrincipalName: u.userPrincipalName || '',
+          phoneNumber: pickPhoneNumber(u),
+        });
+        if (matches.length > 10) break;
+      }
+    }
+
+    if (matches.length > 10) break;
+    nextLink = page.nextLink;
+  } while (nextLink && pages < 20);
+
+  return matches;
+}
+
 /**
  * Searches Microsoft Entra ID (Azure AD) for users whose displayName starts
  * with the given Thai name (or any name string).
@@ -330,6 +389,8 @@ export async function findTeamsUserByThaiName(
       }
 
       if (extensionMatches.length === 0) {
+        const firstPage = await queryGraphUsersPage(graphClient, { top: 30 });
+        logUserPhoneDiagnostics(`extension=${query} no-match`, firstPage.users);
         console.log(`[findTeamsUserByThaiName] No user found matching extension: "${query}"`);
         negativeCache.set(key, true);
         return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
@@ -373,6 +434,35 @@ export async function findTeamsUserByThaiName(
     const users = await queryGraphUsers(graphClient, { filter, top: 10 });
 
     if (!users || users.length === 0) {
+      // Fallback scan: Graph startswith/filter can miss some localized names.
+      const scannedMatches = await scanUsersByNameContains(graphClient, query);
+      if (scannedMatches.length > 1) {
+        console.log(`[findTeamsUserByThaiName] Fallback scan found ${scannedMatches.length} users for "${name}"`);
+        return {
+          upn: null,
+          phoneNumber: null,
+          transferTarget: null,
+          matches: scannedMatches,
+          isDuplicate: true,
+        };
+      }
+
+      if (scannedMatches.length === 1) {
+        const matched = scannedMatches[0];
+        if (matched.phoneNumber) {
+          entraIdCache.set(key, matched.phoneNumber);
+          return {
+            upn: matched.userPrincipalName || null,
+            phoneNumber: matched.phoneNumber,
+            transferTarget: matched.phoneNumber,
+            matches: [matched],
+            isDuplicate: false,
+          };
+        }
+      }
+
+      const firstPage = await queryGraphUsersPage(graphClient, { top: 30 });
+      logUserPhoneDiagnostics(`name=${query} no-match`, firstPage.users);
       console.log(`[findTeamsUserByThaiName] No user found matching name: "${name}"`);
       negativeCache.set(key, true);
       return { upn: null, phoneNumber: null, transferTarget: null, matches: [], isDuplicate: false };
