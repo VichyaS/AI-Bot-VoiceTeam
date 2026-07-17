@@ -123,6 +123,9 @@ export class SipMediaEndpoint extends EventEmitter {
   private running = false;
   private ssrcCounter = 1000;
   private nextRtpPort = 0;
+  private sipAdvertisedHost = '';
+  private mediaAdvertisedIp = '';
+  private warnedPrivateMediaIp = false;
 
   // ASR buffer
   public onAudioData?: (sessionId: string, audioBuffer: Int16Array) => void;
@@ -138,6 +141,14 @@ export class SipMediaEndpoint extends EventEmitter {
     this.tlsEnabled = Boolean(cfg.sipTlsEnabled);
     this.srtpEnabled = Boolean(cfg.srtpEnabled);
     this.srtpProfile = cfg.srtpProfile || 'AES_CM_128_HMAC_SHA1_80';
+
+    const webhookHost = this.extractHostFromUrl(cfg.webhookPublicUrl || '');
+    const envSipPublicHost = (process.env.SIP_PUBLIC_HOST || '').trim();
+    const envSipPublicIp = (process.env.SIP_PUBLIC_IP || '').trim();
+    const envMediaPublicIp = (process.env.SIP_MEDIA_PUBLIC_IP || '').trim();
+
+    this.sipAdvertisedHost = envSipPublicHost || envSipPublicIp || webhookHost;
+    this.mediaAdvertisedIp = envMediaPublicIp || envSipPublicIp || (this.isIpv4(webhookHost) ? webhookHost : '');
   }
 
   listen(): void {
@@ -264,13 +275,13 @@ export class SipMediaEndpoint extends EventEmitter {
     if (!call) return;
 
     const transportParam = call.transport === 'udp' ? '' : `;transport=${call.transport}`;
-    const contactHost = this.getLocalIp();
+    const contactHost = this.getAdvertisedSipHost();
     const contactPort = call.transport === 'tls' ? this.tlsPort : this.sipPort;
     const referMsg = [
       `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
       `Via: SIP/2.0/${call.transport === 'tls' ? 'TLS' : call.transport.toUpperCase()} ${this.getLocalIp()}:${contactPort}`,
-      `From: <sip:bot@${this.getLocalIp()}>;tag=${call.tag}`,
-      `To: <sip:${call.callee}@${this.getLocalIp()}>`,
+      `From: <sip:bot@${contactHost}>;tag=${call.tag}`,
+      `To: <sip:${call.callee}@${contactHost}>`,
       `Call-ID: ${call.callId}`,
       `CSeq: ${++call.seq} REFER`,
       `Refer-To: <${targetSipUri}>`,
@@ -302,6 +313,40 @@ export class SipMediaEndpoint extends EventEmitter {
       }
     }
     return '127.0.0.1';
+  }
+
+  private extractHostFromUrl(rawUrl: string): string {
+    if (!rawUrl) return '';
+    try {
+      const parsed = new URL(rawUrl);
+      return parsed.hostname;
+    } catch {
+      return '';
+    }
+  }
+
+  private isIpv4(value: string): boolean {
+    return /^(\d{1,3}\.){3}\d{1,3}$/u.test(value);
+  }
+
+  private isPrivateIpv4(ip: string): boolean {
+    return /^10\./u.test(ip)
+      || /^127\./u.test(ip)
+      || /^192\.168\./u.test(ip)
+      || /^172\.(1[6-9]|2\d|3[0-1])\./u.test(ip);
+  }
+
+  private getAdvertisedSipHost(): string {
+    return this.sipAdvertisedHost || this.getLocalIp();
+  }
+
+  private getAdvertisedMediaIp(): string {
+    const advertised = this.mediaAdvertisedIp || this.getLocalIp();
+    if (this.isPrivateIpv4(advertised) && !this.warnedPrivateMediaIp) {
+      emitError(`[SIP] Advertised media IP is private (${advertised}). Set SIP_MEDIA_PUBLIC_IP for SBC reachability.`);
+      this.warnedPrivateMediaIp = true;
+    }
+    return advertised;
   }
 
   private getNextRtpPort(): number {
@@ -412,7 +457,7 @@ export class SipMediaEndpoint extends EventEmitter {
     rtpSocket.bind(myPort, '0.0.0.0');
 
     // Advertise bot media endpoint and avoid SDP hairpin back to SBC.
-    const sdpMediaHost = this.getLocalIp();
+    const sdpMediaHost = this.getAdvertisedMediaIp();
     const sdpMediaPort = myPort;
     const cryptoLine = this.srtpEnabled ? `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQ1N1R0J1Q2N3R4T5V6W7X8Y9Z0` : '';
     const sdp = [
@@ -427,7 +472,7 @@ export class SipMediaEndpoint extends EventEmitter {
       cryptoLine,
     ].filter(Boolean).join('\r\n') + '\r\n';
 
-    const contactHost = this.getLocalIp();
+    const contactHost = this.getAdvertisedSipHost();
     const contactPort = transport === 'tls' ? this.tlsPort : this.sipPort;
     const contactTransportParam = transport === 'udp' ? '' : `;transport=${transport}`;
 
