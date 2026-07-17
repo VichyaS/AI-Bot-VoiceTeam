@@ -30,7 +30,8 @@ export class VoiceAiAsrProcessor {
 
     try {
       // Create push stream for real-time audio
-      this.pushStream = sdk.AudioInputStream.createPushStream();
+      const inputFormat = sdk.AudioStreamFormat.getWaveFormatPCM(8000, 16, 1);
+      this.pushStream = sdk.AudioInputStream.createPushStream(inputFormat);
 
       const audioConfig = sdk.AudioConfig.fromStreamInput(this.pushStream);
       const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
@@ -70,8 +71,8 @@ export class VoiceAiAsrProcessor {
    */
   feedAudio(chunk: Buffer): void {
     if (this.pushStream) {
-      const arr = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-      this.pushStream.write(arr.buffer as ArrayBuffer);
+      const copy = Uint8Array.from(chunk).buffer;
+      this.pushStream.write(copy);
     }
   }
 

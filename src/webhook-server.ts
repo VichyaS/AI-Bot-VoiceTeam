@@ -314,7 +314,7 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
       );
       asrProcessors.set(sessionId, processor);
     }
-    const buf = Buffer.from(audioBuffer.buffer);
+    const buf = Buffer.from(audioBuffer.buffer, audioBuffer.byteOffset, audioBuffer.byteLength);
     processor.feedAudio(buf);
   }
 };
