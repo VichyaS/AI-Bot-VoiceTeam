@@ -4,6 +4,7 @@ set -euo pipefail
 AWS_REGION="${AWS_REGION:-ap-southeast-3}"
 INSTANCE_NAME="${INSTANCE_NAME:-voice-bot-ec2}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-t3.small}"
+INSTANCE_TYPE_FALLBACKS="${INSTANCE_TYPE_FALLBACKS:-t3.micro,t4g.small,t4g.micro}"
 AMI_ID="${AMI_ID:-resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}"
 KEY_NAME="${KEY_NAME:-voice-bot-key}"
 SECURITY_GROUP_NAME="${SECURITY_GROUP_NAME:-voice-bot-sg}"
@@ -45,18 +46,67 @@ authorize_rule udp 5060 5060 "$RTP_CIDR"
 authorize_rule tcp 5061 5061 "$RTP_CIDR"
 authorize_rule udp 10000 20000 "$RTP_CIDR"
 
+launch_instance() {
+  local candidate_type="$1"
+  local instance_id=""
+
+  set +e
+  instance_id="$(aws ec2 run-instances \
+    --region "$AWS_REGION" \
+    --image-id "$AMI_ID" \
+    --instance-type "$candidate_type" \
+    --key-name "$KEY_NAME" \
+    --security-group-ids "$SECURITY_GROUP_ID" \
+    --subnet-id "$SUBNET_ID" \
+    --associate-public-ip-address \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]" \
+    --query 'Instances[0].InstanceId' \
+    --output text 2>/tmp/aws_run_instances_error.log)"
+  local status=$?
+  set -e
+
+  if [ $status -eq 0 ] && [ -n "$instance_id" ] && [ "$instance_id" != "None" ]; then
+    echo "$instance_id"
+    return 0
+  fi
+
+  return 1
+}
+
 echo "Launching EC2 instance..."
-INSTANCE_ID="$(aws ec2 run-instances \
-  --region "$AWS_REGION" \
-  --image-id "$AMI_ID" \
-  --instance-type "$INSTANCE_TYPE" \
-  --key-name "$KEY_NAME" \
-  --security-group-ids "$SECURITY_GROUP_ID" \
-  --subnet-id "$SUBNET_ID" \
-  --associate-public-ip-address \
-  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}}]" \
-  --query 'Instances[0].InstanceId' \
-  --output text)"
+selected_type=""
+INSTANCE_ID=""
+IFS=',' read -r -a fallback_types <<< "$INSTANCE_TYPE_FALLBACKS"
+candidate_types=("$INSTANCE_TYPE" "${fallback_types[@]}")
+
+for candidate in "${candidate_types[@]}"; do
+  candidate_trimmed="$(echo "$candidate" | xargs)"
+  if [ -z "$candidate_trimmed" ]; then
+    continue
+  fi
+
+  echo "Trying instance type: $candidate_trimmed"
+  if INSTANCE_ID="$(launch_instance "$candidate_trimmed")"; then
+    selected_type="$candidate_trimmed"
+    break
+  fi
+
+  if [ -s /tmp/aws_run_instances_error.log ]; then
+    echo "Failed with $candidate_trimmed: $(tail -n 1 /tmp/aws_run_instances_error.log)"
+  fi
+done
+
+if [ -z "$INSTANCE_ID" ]; then
+  echo "Unable to launch instance in region $AWS_REGION with configured candidates." >&2
+  echo "Tried: ${candidate_types[*]}" >&2
+  if [ -s /tmp/aws_run_instances_error.log ]; then
+    echo "Last AWS error:" >&2
+    cat /tmp/aws_run_instances_error.log >&2
+  fi
+  exit 1
+fi
+
+echo "Launched using instance type: $selected_type"
 
 echo "Waiting for instance to enter running state..."
 aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"

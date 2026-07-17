@@ -54,6 +54,14 @@ chmod +x deploy/aws/aws-deploy.sh
 
 สคริปต์นี้จะสร้าง key pair, security group, เปิดพอร์ต SIP `5060/UDP`, SIP/TLS `5061/TCP`, RTP `10000-20000/UDP` และ launch EC2 instance ให้พร้อมใช้งานเบื้องต้น
 
+รองรับการ fallback instance type อัตโนมัติ หาก type แรกใช้ไม่ได้ใน region นั้น:
+
+```bash
+export INSTANCE_TYPE=t3.small
+export INSTANCE_TYPE_FALLBACKS="t3.micro,t4g.small,t4g.micro"
+./deploy/aws/aws-deploy.sh
+```
+
 ### 2.1 อัปเดตเซิร์ฟเวอร์
 
 ```bash
