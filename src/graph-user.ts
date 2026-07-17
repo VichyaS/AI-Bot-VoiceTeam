@@ -103,6 +103,29 @@ function getPhoneLast4(raw: string | null | undefined): string | null {
   return digits.slice(-4);
 }
 
+function getPhoneCandidates(user: GraphUserRecord): string[] {
+  const rawCandidates: (string | null | undefined)[] = [
+    ...(user.businessPhones || []),
+    user.mobilePhone,
+  ];
+
+  const unique = new Set<string>();
+  for (const raw of rawCandidates) {
+    const normalized = normalizePhoneForTransfer(raw);
+    if (normalized) unique.add(normalized);
+  }
+
+  return [...unique];
+}
+
+function findPhoneByLast4(user: GraphUserRecord, suffix: string): string | null {
+  const candidates = getPhoneCandidates(user);
+  for (const candidate of candidates) {
+    if (getPhoneLast4(candidate) === suffix) return candidate;
+  }
+  return null;
+}
+
 export function buildEntraUserLookupFilter(name: string): string {
   const escapedName = name.trim().replace(/'/g, "''");
   return [
@@ -186,17 +209,7 @@ async function queryGraphUserByUpn(
 }
 
 function pickPhoneNumber(user: GraphUserRecord): string | null {
-  const candidates: (string | null | undefined)[] = [
-    user.businessPhones?.[0],
-    user.mobilePhone,
-  ];
-
-  for (const candidate of candidates) {
-    const normalized = normalizePhoneForTransfer(candidate);
-    if (normalized) return normalized;
-  }
-
-  return null;
+  return getPhoneCandidates(user)[0] || null;
 }
 
 /**
@@ -268,13 +281,12 @@ export async function findTeamsUserByThaiName(
         pages += 1;
 
         for (const u of page.users) {
-          const phoneNumber = pickPhoneNumber(u);
-          const last4 = getPhoneLast4(phoneNumber);
-          if (last4 === query) {
+          const matchedPhone = findPhoneByLast4(u, query);
+          if (matchedPhone) {
             extensionMatches.push({
               displayName: u.displayName || '',
               userPrincipalName: u.userPrincipalName || '',
-              phoneNumber,
+              phoneNumber: matchedPhone,
             });
             if (extensionMatches.length > 1) break;
           }

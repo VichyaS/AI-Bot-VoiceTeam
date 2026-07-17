@@ -208,3 +208,25 @@ test('findTeamsUserByThaiName returns duplicate list for 4-digit extension colli
   assert.equal(result.matches[0]?.displayName, 'Vichya Sripibaln');
   assert.equal(result.matches[1]?.displayName, 'Guest Vichya');
 });
+
+test('findTeamsUserByThaiName matches 4-digit extension from non-first business phone', async () => {
+  clearEntraIdCache();
+  configureTestCredentials();
+
+  const mock = new MockGraphClient([
+    {
+      displayName: 'Sothea Hun',
+      userPrincipalName: 'sothea.h@wbgood.cloud',
+      businessPhones: ['tel:+668101004', 'tel:+669991001'],
+      mobilePhone: null,
+    },
+  ]);
+
+  setGraphClientForTesting(mock as never);
+
+  const result = await findTeamsUserByThaiName('1001');
+
+  assert.equal(result.isDuplicate, false);
+  assert.equal(result.phoneNumber, '+669991001');
+  assert.equal(result.transferTarget, '+669991001');
+});

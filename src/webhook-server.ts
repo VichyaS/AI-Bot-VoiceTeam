@@ -30,6 +30,7 @@ import { emitInfo, emitAi, emitEntraId, emitTransfer, emitError, emitCallEvent }
 import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
+import { inferRoutingFromSpeech, isFailedRouting } from './routing-fallback.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
 
@@ -492,22 +493,25 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
           }
 
           // User speech
-          // Helper to check if a result is a "failed attempt" (unknown or error)
-          function isFailedRouting(result: { target_type: string; extracted_value: string } | null): boolean {
-            return !result || result.target_type === 'unknown' || result.target_type === 'error';
-          }
-
           if (activity.type === BotActivityType.message && activity.text) {
             const userSpeech = String(activity.text);
             const convId = payload.conversationId || payload.caller || 'unknown';
+            const spokenText = userSpeech.trim();
             console.log('[webhook] User said:', userSpeech);
 
             // Step 1: Extract intent via OpenRouter AI (returns structured JSON)
             emitAi(`Processing user speech via OpenRouter...`);
             const aiResult = await extractThaiName(userSpeech);
 
+            // Fallback parser for production: if AI returns unknown/error,
+            // infer simple intents directly from the spoken text.
+            const routingResult = inferRoutingFromSpeech(aiResult, spokenText);
+            if (routingResult && aiResult && routingResult !== aiResult && isFailedRouting(aiResult)) {
+              emitAi(`Fallback parsed: target_type="${routingResult.target_type}", value="${routingResult.extracted_value}"`);
+            }
+
             // ── Check retry counter for failed routing ──────────────
-            if (isFailedRouting(aiResult)) {
+            if (isFailedRouting(routingResult)) {
               const attempts = incrementRetry(convId);
               emitInfo(`Failed routing attempt ${attempts}/${cfg.maxRetries} for conv ${convId}`);
 
@@ -520,7 +524,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
               }
             }
 
-            if (!aiResult) {
+            if (!routingResult) {
               emitError('OpenRouter API call failed');
               console.log('[webhook] OpenRouter API call failed.');
               const retryActivity: BotActivity = {
@@ -530,14 +534,14 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
               return res.status(200).json({ activities: [retryActivity] });
             }
 
-            emitAi(`AI parsed: target_type="${aiResult.target_type}", value="${aiResult.extracted_value}"`);
-            console.log('[webhook] AI result:', aiResult);
+            emitAi(`AI parsed: target_type="${routingResult.target_type}", value="${routingResult.extracted_value}"`);
+            console.log('[webhook] AI result:', routingResult);
 
             try {
-              switch (aiResult.target_type) {
+              switch (routingResult.target_type) {
                 // ── Extension (e.g. "ต่อ 1234") ───────────────────────
                 case 'extension': {
-                  const extValue = aiResult.extracted_value?.trim() || '';
+                  const extValue = routingResult.extracted_value?.trim() || '';
 
                   // For 4-digit extensions, resolve via Entra phone numbers first.
                   if (/^\d{4}$/u.test(extValue)) {
@@ -582,13 +586,13 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                 // ── Person name (e.g. "คุณสมชาย") ─────────────────────
                 case 'user': {
-                  emitEntraId(`Looking up user '${aiResult.extracted_value}' in Entra ID...`);
-                  const lookupResult = await findTeamsUserByThaiName(aiResult.extracted_value);
+                  emitEntraId(`Looking up user '${routingResult.extracted_value}' in Entra ID...`);
+                  const lookupResult = await findTeamsUserByThaiName(routingResult.extracted_value);
 
                   if (lookupResult.isDuplicate && lookupResult.matches.length > 1) {
                     // ── Duplicate names found! Inform the caller ──────────
                     const names = formatDuplicateUserChoicesForThaiTts(lookupResult.matches);
-                    emitEntraId(`Found ${lookupResult.matches.length} users matching "${aiResult.extracted_value}": ${names}`);
+                    emitEntraId(`Found ${lookupResult.matches.length} users matching "${routingResult.extracted_value}": ${names}`);
                     const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
@@ -609,7 +613,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   }
 
                   if (lookupResult.matches.length === 1 && !lookupResult.transferTarget) {
-                    emitEntraId(`User '${aiResult.extracted_value}' found but has no phone number`);
+                    emitEntraId(`User '${routingResult.extracted_value}' found but has no phone number`);
                     const noPhoneActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts('พบข้อมูลผู้ใช้แล้ว แต่ยังไม่มีเบอร์สำหรับโอนสายค่ะ'),
@@ -617,7 +621,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     return res.status(200).json({ activities: [noPhoneActivity] });
                   }
 
-                  emitEntraId(`User '${aiResult.extracted_value}' not found`);
+                  emitEntraId(`User '${routingResult.extracted_value}' not found`);
                   const notFoundActivity: BotActivity = {
                     type: BotActivityType.message,
                     text: cleanTextForThaiTts('ไม่พบข้อมูลที่ระบุค่ะ กรุณาแจ้งชื่อหรือเบอร์ต่ออีกครั้งค่ะ'),
@@ -627,18 +631,18 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                 // ── Department (e.g. "ฝ่ายบัญชี") ─────────────────────
                 case 'department': {
-                  emitInfo(`Looking up department SIP URI for '${aiResult.extracted_value}'...`);
-                  const deptSip = getDepartmentSipUri(aiResult.extracted_value);
+                  emitInfo(`Looking up department SIP URI for '${routingResult.extracted_value}'...`);
+                  const deptSip = getDepartmentSipUri(routingResult.extracted_value);
 
                   if (deptSip) {
                     const deptTarget = deptSip.replace(/^sip:/iu, '');
                     emitTransfer(`Routing to department: sip:${deptTarget}`);
                     resetRetry(convId);
-                    const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยัง${aiResult.extracted_value}ค่ะ`);
+                    const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยัง${routingResult.extracted_value}ค่ะ`);
                     return res.status(200).json(deptResponse);
                   }
 
-                  emitInfo(`Department '${aiResult.extracted_value}' not found`);
+                  emitInfo(`Department '${routingResult.extracted_value}' not found`);
                   const deptNotFound: BotActivity = {
                     type: BotActivityType.message,
                     text: cleanTextForThaiTts('ไม่พบแผนกที่ต้องการติดต่อค่ะ'),
