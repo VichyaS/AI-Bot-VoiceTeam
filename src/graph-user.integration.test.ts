@@ -7,7 +7,10 @@ import {
 } from './graph-user.js';
 
 class MockGraphClient {
-  constructor(private readonly users: unknown[]) {}
+  constructor(
+    private readonly users: unknown[],
+    private readonly pathResponses: Record<string, unknown> = {},
+  ) {}
 
   public lastApiPath = '';
   public lastFilter = '';
@@ -35,6 +38,10 @@ class MockGraphClient {
   }
 
   async get(): Promise<{ value: unknown[] }> {
+    if (this.pathResponses[this.lastApiPath] !== undefined) {
+      return this.pathResponses[this.lastApiPath] as never;
+    }
+
     return { value: this.users };
   }
 }
@@ -103,6 +110,42 @@ test('findTeamsUserByThaiName returns match without transfer target when phone i
   assert.equal(result.upn, 'uthai.t@wbgood.cloud');
   assert.equal(result.phoneNumber, null);
   assert.equal(result.transferTarget, null);
+  assert.equal(result.matches.length, 1);
+});
+
+test('findTeamsUserByThaiName resolves missing phone by querying user detail', async () => {
+  clearEntraIdCache();
+  configureTestCredentials();
+
+  const upn = 'uthai.t@wbgood.cloud';
+  const encodedUpn = encodeURIComponent(upn);
+  const mock = new MockGraphClient(
+    [
+      {
+        displayName: 'Uthai Dangthong',
+        userPrincipalName: upn,
+        businessPhones: [],
+        mobilePhone: null,
+      },
+    ],
+    {
+      [`/users/${encodedUpn}`]: {
+        displayName: 'Uthai Dangthong',
+        userPrincipalName: upn,
+        businessPhones: ['tel:+668101003'],
+        mobilePhone: null,
+      },
+    },
+  );
+
+  setGraphClientForTesting(mock as never);
+
+  const result = await findTeamsUserByThaiName('อุทัย');
+
+  assert.equal(result.isDuplicate, false);
+  assert.equal(result.upn, upn);
+  assert.equal(result.phoneNumber, '+668101003');
+  assert.equal(result.transferTarget, '+668101003');
   assert.equal(result.matches.length, 1);
 });
 

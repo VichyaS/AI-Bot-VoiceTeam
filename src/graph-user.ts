@@ -89,9 +89,18 @@ export function normalizePhoneForTransfer(raw: string | null | undefined): strin
   const normalized = raw
     .trim()
     .replace(/^tel:/iu, '')
-    .replace(/[\s()-]/gu, '');
+    .split(';')[0]
+    .replace(/[^\d+]/gu, '');
 
   return normalized.length > 0 ? normalized : null;
+}
+
+function getPhoneLast4(raw: string | null | undefined): string | null {
+  const normalized = normalizePhoneForTransfer(raw);
+  if (!normalized) return null;
+  const digits = normalized.replace(/\D/gu, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
 }
 
 export function buildEntraUserLookupFilter(name: string): string {
@@ -112,8 +121,7 @@ function isFourDigitExtension(value: string): boolean {
 export function formatDuplicateUserChoicesForThaiTts(matches: readonly EntraUserMatch[]): string {
   return matches
     .map((m) => {
-      const normalized = (m.phoneNumber || '').replace(/^tel:/iu, '');
-      const last4 = normalized.length >= 4 ? normalized.slice(-4) : '';
+      const last4 = getPhoneLast4(m.phoneNumber) || '';
       const spokenLast4 = last4.split('').join(' ');
       return last4
         ? `${m.displayName} เบอร์ลงท้าย ${spokenLast4}`
@@ -121,6 +129,11 @@ export function formatDuplicateUserChoicesForThaiTts(matches: readonly EntraUser
     })
     .join(' , ');
 }
+
+type GraphUsersResponse = {
+  value?: GraphUserRecord[];
+  '@odata.nextLink'?: string;
+};
 
 async function queryGraphUsers(
   graphClient: Client,
@@ -134,9 +147,42 @@ async function queryGraphUsers(
   const result = await request
     .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
     .top(options?.top ?? 10)
-    .get() as { value: GraphUserRecord[] };
+    .get() as GraphUsersResponse;
 
   return result.value || [];
+}
+
+async function queryGraphUsersPage(
+  graphClient: Client,
+  options?: { path?: string; top?: number },
+): Promise<{ users: GraphUserRecord[]; nextLink: string | null }> {
+  let request = graphClient.api(options?.path || '/users');
+  if (!options?.path) {
+    request = request
+      .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+      .top(options?.top ?? 200);
+  }
+
+  const result = await request.get() as GraphUsersResponse;
+  return {
+    users: result.value || [],
+    nextLink: result['@odata.nextLink'] || null,
+  };
+}
+
+async function queryGraphUserByUpn(
+  graphClient: Client,
+  upn: string,
+): Promise<GraphUserRecord | null> {
+  try {
+    const result = await graphClient
+      .api(`/users/${encodeURIComponent(upn)}`)
+      .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+      .get() as GraphUserRecord;
+    return result;
+  } catch {
+    return null;
+  }
 }
 
 function pickPhoneNumber(user: GraphUserRecord): string | null {
@@ -213,14 +259,30 @@ export async function findTeamsUserByThaiName(
 
   try {
     if (isFourDigitExtension(query)) {
-      const users = await queryGraphUsers(graphClient, { top: 200 });
-      const mappedUsers = users.map((u): EntraUserMatch => ({
-        displayName: u.displayName || '',
-        userPrincipalName: u.userPrincipalName || '',
-        phoneNumber: pickPhoneNumber(u),
-      }));
+      const extensionMatches: EntraUserMatch[] = [];
+      let nextLink: string | null = null;
+      let pages = 0;
 
-      const extensionMatches = mappedUsers.filter((u) => (u.phoneNumber || '').endsWith(query));
+      do {
+        const page = await queryGraphUsersPage(graphClient, nextLink ? { path: nextLink } : { top: 200 });
+        pages += 1;
+
+        for (const u of page.users) {
+          const phoneNumber = pickPhoneNumber(u);
+          const last4 = getPhoneLast4(phoneNumber);
+          if (last4 === query) {
+            extensionMatches.push({
+              displayName: u.displayName || '',
+              userPrincipalName: u.userPrincipalName || '',
+              phoneNumber,
+            });
+            if (extensionMatches.length > 1) break;
+          }
+        }
+
+        if (extensionMatches.length > 1) break;
+        nextLink = page.nextLink;
+      } while (nextLink && pages < 20);
 
       if (extensionMatches.length === 0) {
         console.log(`[findTeamsUserByThaiName] No user found matching extension: "${query}"`);
@@ -300,6 +362,22 @@ export async function findTeamsUserByThaiName(
     );
 
     if (!matchedPhone) {
+      if (matched.userPrincipalName) {
+        const detail = await queryGraphUserByUpn(graphClient, matched.userPrincipalName);
+        const detailPhone = detail ? pickPhoneNumber(detail) : null;
+        if (detailPhone) {
+          console.log(`[findTeamsUserByThaiName] Resolved phone from user detail: ${detailPhone}`);
+          entraIdCache.set(key, detailPhone);
+          return {
+            upn: matched.userPrincipalName || null,
+            phoneNumber: detailPhone,
+            transferTarget: detailPhone,
+            matches: [{ ...matched, phoneNumber: detailPhone }],
+            isDuplicate: false,
+          };
+        }
+      }
+
       console.log(`[findTeamsUserByThaiName] User matched but no phone number: "${name}"`);
       negativeCache.set(key, true);
       return {
