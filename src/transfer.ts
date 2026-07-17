@@ -4,18 +4,23 @@ import { getConfig } from './config-manager.js';
 
 /**
  * Builds a SIP URI with optional port and transport parameters.
- * Example: sip:somchai@company.com:5061;transport=tls
+ * Example: sip:somchai@company.com:5061
  */
 function buildSipUri(target: string): string {
   const cfg = getConfig();
   const domain = cfg.sipDomain?.replace(/^sip:/iu, '') || 'company.com';
   const port = cfg.sbcPort || 5061;
-  const transport = (cfg.transferProtocol || 'TLS').toLowerCase();
-  const normalizedTarget = target.replace(/^sip:/iu, '').trim();
+  const normalizedTarget = target
+    .replace(/^sip:/iu, '')
+    .replace(/;transport=[^;>]+/iu, '')
+    .trim();
 
-  // If target is already a full SIP URI (contains @), use it as-is
+  // If target already has a host, keep it and ensure signaling port exists.
   if (normalizedTarget.includes('@')) {
-    return `sip:${normalizedTarget}:${port};transport=${transport}`;
+    const hasPort = /@[^;:>]+:\d+/u.test(normalizedTarget);
+    return hasPort
+      ? `sip:${normalizedTarget}`
+      : `sip:${normalizedTarget}:${port}`;
   }
 
   // E.164 numbers should go to Microsoft's PSTN hub for Teams routing.
@@ -23,7 +28,7 @@ function buildSipUri(target: string): string {
     ? 'sip.pstnhub.microsoft.com'
     : domain;
 
-  return `sip:${normalizedTarget}@${targetDomain}:${port};transport=${transport}`;
+  return `sip:${normalizedTarget}@${targetDomain}:${port}`;
 }
 
 /**

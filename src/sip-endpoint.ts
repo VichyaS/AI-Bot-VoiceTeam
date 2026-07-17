@@ -50,6 +50,9 @@ interface ActiveCall {
   rtpTimestamp?: number;
   rtpSsrc?: number;
   pendingSpeech?: string[];
+  remoteTargetUri?: string;
+  localDialogUri?: string;
+  remoteDialogUri?: string;
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -394,14 +397,22 @@ export class SipMediaEndpoint extends EventEmitter {
     const transportParam = call.transport === 'udp' ? '' : `;transport=${call.transport}`;
     const contactHost = this.getAdvertisedSipHost();
     const contactPort = call.transport === 'tls' ? this.tlsPort : this.sipPort;
+    const referTarget = targetSipUri.replace(/;transport=[^;>]+/iu, '').trim();
+    const referRequestUri = call.remoteTargetUri || `sip:${call.caller}@${call.remoteAddr}:${call.remotePort}`;
+    const fromHeader = call.localDialogUri || `<sip:${call.callee}@${contactHost}>;tag=${call.tag}`;
+    const toHeader = call.remoteDialogUri || `<sip:${call.caller}@${call.remoteAddr}:${call.remotePort}>`;
+    const viaBranch = `z9hG4bK${Date.now()}${Math.floor(Math.random() * 10000)}`;
+
     const referMsg = [
-      `REFER sip:${call.callee}@${this.sipPort} SIP/2.0`,
-      `Via: SIP/2.0/${call.transport === 'tls' ? 'TLS' : call.transport.toUpperCase()} ${this.getLocalIp()}:${contactPort}`,
-      `From: <sip:bot@${contactHost}>;tag=${call.tag}`,
-      `To: <sip:${call.callee}@${contactHost}>`,
+      `REFER ${referRequestUri} SIP/2.0`,
+      `Via: SIP/2.0/${call.transport === 'tls' ? 'TLS' : call.transport.toUpperCase()} ${this.getLocalIp()}:${contactPort};branch=${viaBranch}`,
+      'Max-Forwards: 70',
+      `From: ${fromHeader}`,
+      `To: ${toHeader}`,
       `Call-ID: ${call.callId}`,
       `CSeq: ${++call.seq} REFER`,
-      `Refer-To: <${targetSipUri}>`,
+      `Refer-To: <${referTarget}>`,
+      `Referred-By: <sip:bot@${contactHost}:${contactPort}${transportParam}>`,
       `Contact: <sip:bot@${contactHost}:${contactPort}${transportParam}>`,
       'Content-Length: 0',
       '',
@@ -414,7 +425,7 @@ export class SipMediaEndpoint extends EventEmitter {
     } else {
       this.sipSocket.send(buf, call.remotePort, call.remoteAddr);
     }
-    emitTransfer(`[SIP] Sent REFER to ${targetSipUri}`);
+    emitTransfer(`[SIP] Sent REFER to ${referTarget}`);
   }
 
   // ── Private methods ──────────────────────────────────────────
@@ -531,6 +542,11 @@ export class SipMediaEndpoint extends EventEmitter {
       const viaMatch = msg.headers.via?.match(/(\d+\.\d+\.\d+\.\d+)/);
       if (viaMatch) sbcIp = viaMatch[1];
     }
+    const remoteTargetUri = msg.headers.contact?.match(/<([^>]+)>/)?.[1]
+      || `sip:${caller}@${remoteAddr}:${remotePort}`;
+    const localDialogUri = `${to};tag=${tag}`;
+    const remoteDialogUri = from;
+
     const call: ActiveCall = {
       sessionId,
       caller,
@@ -547,6 +563,9 @@ export class SipMediaEndpoint extends EventEmitter {
       sbcMediaHost: sbcMediaHost || sbcIp,
       sbcMediaPort,
       botRtpPort: myPort,
+      remoteTargetUri,
+      localDialogUri,
+      remoteDialogUri,
     };
     this.calls.set(sessionId, call);
 
