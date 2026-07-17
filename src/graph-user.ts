@@ -9,6 +9,17 @@ import { entraIdCache, negativeCache } from './cache.js';
 let _graphClient: Client | null = null;
 let _lastCredentialHash = '';
 
+/**
+ * Test-only helper for injecting a mocked Graph client.
+ */
+export function setGraphClientForTesting(client: Client | null): void {
+  _graphClient = client;
+  const cfg = getConfig();
+  const tenantId = cfg.tenantId || process.env.AZURE_TENANT_ID || '';
+  const clientId = cfg.clientId || process.env.AZURE_CLIENT_ID || '';
+  _lastCredentialHash = `${tenantId}:${clientId}`;
+}
+
 function getGraphClient(): Client | null {
   const cfg = getConfig();
   const tenantId = cfg.tenantId || process.env.AZURE_TENANT_ID || '';

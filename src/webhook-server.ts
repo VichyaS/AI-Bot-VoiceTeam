@@ -561,11 +561,12 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                       .map((m) => {
                         const normalized = (m.phoneNumber || '').replace(/^tel:/iu, '');
                         const last4 = normalized.length >= 4 ? normalized.slice(-4) : '';
+                        const spokenLast4 = last4.split('').join(' ');
                         return last4
-                          ? `${m.displayName} เบอร์ลงท้าย ${last4}`
+                          ? `${m.displayName} เบอร์ลงท้าย ${spokenLast4}`
                           : `${m.displayName} ไม่พบเบอร์`;
                       })
-                      .join(', ');
+                      .join(' , ');
                     emitEntraId(`Found ${lookupResult.matches.length} users matching "${aiResult.extracted_value}": ${names}`);
                     const duplicatePrompt = `พบข้อมูลผู้ใช้ชื่อเดียวกัน ${lookupResult.matches.length} คน คือ ${names} กรุณาระบุชื่อหรือแผนกให้ชัดเจนยิ่งขึ้นค่ะ`;
                     const duplicateActivity: BotActivity = {
