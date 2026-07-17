@@ -165,7 +165,7 @@ export function getConfig(): AppConfig {
 export function updateConfig(patch: Partial<AppConfig>): AppConfig & { verified: true; message: string } {
   // Validate types
   for (const [key, value] of Object.entries(patch)) {
-    if (key === 'maxMatchResults' || key === 'maxTokens' || key === 'maxRetries' || key === 'sbcPort' || key === 'transferTimeout') {
+    if (key === 'maxMatchResults' || key === 'maxTokens' || key === 'maxRetries' || key === 'sbcPort' || key === 'sipTlsPort' || key === 'transferTimeout') {
       if (typeof value !== 'number' || value < 1) {
         throw new Error(`Invalid ${key}: must be a number >= 1`);
       }
