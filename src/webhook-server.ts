@@ -73,7 +73,14 @@ app.get('/api/health', (_req: Request, res: Response) => {
 const dashboardDist = path.resolve(__dirname, '..', 'admin-dashboard', 'dist');
 if (fs.existsSync(dashboardDist)) {
   console.log(`[webhook] Serving admin dashboard from ${dashboardDist}`);
-  app.use(express.static(dashboardDist));
+  app.use(express.static(dashboardDist, {
+    setHeaders: (res) => {
+      // Prevent clients from serving stale dashboard bundles after deployments.
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    },
+  }));
 }
 
 // ── Security middleware ─────────────────────────────────────────────
@@ -649,6 +656,9 @@ app.use((req: Request, res: Response) => {
   }
   const indexPath = path.join(dashboardDist, 'index.html');
   if (fs.existsSync(indexPath)) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(indexPath);
   } else {
     res.status(404).send('Not found');
