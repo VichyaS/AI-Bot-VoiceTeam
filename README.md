@@ -166,6 +166,16 @@ This repository is intended to be deployed on a standard host or VM with direct 
 - Azure: see [docs/azure-install-th.md](docs/azure-install-th.md)
 - Hostinger: see [docs/hostinger-install-th.md](docs/hostinger-install-th.md)
 
+### ข้อดี-ข้อเสียของวิธีติดตั้ง 3 แบบ
+
+| แบบ | ข้อดี | ข้อเสีย | ประมาณค่า/เดือน (1,000 นาที/เดือน) |
+|------|------|--------|-------------------------------------|
+| AWS EC2 | ควบคุมเต็มรูปแบบ, เปิด SIP/RTP/UDP ได้ง่าย, เหมาะกับ SBC จริงและ production workload | ต้องดูแล OS, firewall, PM2 และ security เอง | ประมาณ $25–60/เดือน |
+| Azure VM | ผสานกับ Azure Speech / Entra / Microsoft ecosystem ได้ดี, มี NSG / Public IP ที่จัดการง่าย | ต้นทุนค่อนข้างสูงกว่าแบบพื้นฐาน, ต้องกำหนด network rule เอง | ประมาณ $30–65/เดือน |
+| Hostinger VPS / Shared | เริ่มต้นคุ้มค่า, ตั้งค่าและดูแลง่าย, เหมาะสำหรับ webhook/admin dashboard | Shared hosting ไม่แนะนำสำหรับ SIP/RTP จริง; VPS ยังต้องมี firewall/NAT/port rule ที่ถูกต้อง | ประมาณ $15–40/เดือน |
+
+> สมมติฐาน: 1,000 นาที/เดือนของ voice session, VM/VPS always-on, ใช้งาน Speech/AI API ในระดับปานกลาง, ไม่รวมค่า domain/SSL/backup/SBC carrier เสริม
+
 ### Recommended deployment paths
 
 ```mermaid
