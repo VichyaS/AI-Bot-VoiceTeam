@@ -24,6 +24,22 @@
   "routingMode": "Blind Transfer",
   "transferTimeout": 15,
   "maxMatchResults": 1,
+  "fallbackMappings": [
+    {
+      "name": "วิชยะ",
+      "upn": "vichya.s@wbgood.cloud",
+      "extension": "1000",
+      "lineURI": "tel:+668101000;ext=1000",
+      "phone": "tel:+668101000"
+    },
+    {
+      "name": "อุทัย",
+      "upn": "uthai.t@wbgood.cloud",
+      "extension": "1003",
+      "lineURI": "tel:+668101003;ext=1003",
+      "phone": "tel:+668101003"
+    }
+  ],
   "operatorFallbackSip": "sip:operator-queue@company.com",
   "departments": [
     {

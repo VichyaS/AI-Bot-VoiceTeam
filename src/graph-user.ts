@@ -134,9 +134,9 @@ function getPhoneLast4(raw: string | null | undefined): string | null {
 
 function getPhoneCandidates(user: GraphUserRecord): string[] {
   const rawCandidates: (string | null | undefined)[] = [
-    user.telephoneNumber,
     user.lineUri,
     user.lineURI,
+    user.telephoneNumber,
     ...(user.businessPhones || []),
     user.mobilePhone,
   ];

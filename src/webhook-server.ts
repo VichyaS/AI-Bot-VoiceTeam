@@ -30,7 +30,8 @@ import { emitInfo, emitAi, emitEntraId, emitTransfer, emitError, emitCallEvent }
 import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
-import { inferRoutingFromSpeech, isFailedRouting } from './routing-fallback.js';
+import { inferRoutingFromSpeech, isFailedRouting, shouldForceHangup } from './routing-fallback.js';
+import { resolveFallbackMappedPhone } from './fallback-contact-mapping.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
 
@@ -499,6 +500,15 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
             const spokenText = userSpeech.trim();
             console.log('[webhook] User said:', userSpeech);
 
+            if (shouldForceHangup(spokenText)) {
+              emitInfo(`Forced hangup intent detected from speech: "${spokenText}"`);
+              const endCallActivities: BotActivity[] = [
+                { type: BotActivityType.message, text: cleanTextForThaiTts('ขอบคุณที่ติดต่อค่ะ สวัสดีค่ะ') },
+                { type: BotActivityType.event, name: BotActivityEventName.hangup },
+              ];
+              return res.status(200).json({ activities: endCallActivities });
+            }
+
             // Step 1: Extract intent via OpenRouter AI (returns structured JSON)
             emitAi(`Processing user speech via OpenRouter...`);
             const aiResult = await extractThaiName(userSpeech);
@@ -545,6 +555,14 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                   // For 4-digit extensions, resolve via Entra phone numbers first.
                   if (/^\d{4}$/u.test(extValue)) {
+                    const mappedPhone = resolveFallbackMappedPhone({ extension: extValue });
+                    if (mappedPhone) {
+                      emitTransfer(`Routing extension ${extValue} via fallback mapping to phone: ${mappedPhone}`);
+                      resetRetry(convId);
+                      const extResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
+                      return res.status(200).json(extResponse);
+                    }
+
                     emitEntraId(`Looking up extension '${extValue}' by phone suffix in Entra ID...`);
                     const extLookup = await findTeamsUserByThaiName(extValue);
 
@@ -610,6 +628,17 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     resetRetry(convId);
                     const response = generateTransferResponse(lookupResult.transferTarget, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(response);
+                  }
+
+                  const mappedPhone = resolveFallbackMappedPhone({
+                    name: routingResult.extracted_value,
+                    upn: lookupResult.upn || undefined,
+                  });
+                  if (mappedPhone) {
+                    emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${mappedPhone}`);
+                    resetRetry(convId);
+                    const mappedResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
+                    return res.status(200).json(mappedResponse);
                   }
 
                   if (lookupResult.matches.length === 1 && !lookupResult.transferTarget) {

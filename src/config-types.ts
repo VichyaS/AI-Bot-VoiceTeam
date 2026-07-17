@@ -1,5 +1,13 @@
 import type { DepartmentEntry } from './services/routing-types.js';
 
+export interface FallbackContactMapping {
+  name?: string;
+  upn?: string;
+  extension?: string;
+  lineURI?: string;
+  phone: string;
+}
+
 /**
  * Shared configuration schema matching the admin dashboard form.
  */
@@ -56,6 +64,8 @@ export interface AppConfig {
   /** Max seconds to wait for transfer success before fallback */
   transferTimeout: number;
   maxMatchResults: number;
+  /** Static fallback mapping when Entra user phone fields are not ready */
+  fallbackMappings?: FallbackContactMapping[];
   /** SIP URI for the central operator / call queue when a transfer fails */
   operatorFallbackSip?: string;
   /** Department routing table — editable by admins via the dashboard */
@@ -96,6 +106,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   routingMode: 'Blind Transfer',
   transferTimeout: 15,
   maxMatchResults: 1,
+  fallbackMappings: [],
   operatorFallbackSip: 'sip:operator-queue@company.com',
 };
 

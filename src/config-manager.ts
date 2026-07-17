@@ -181,6 +181,18 @@ export function updateConfig(patch: Partial<AppConfig>): AppConfig & { verified:
       if (!Array.isArray(value)) {
         throw new Error('Invalid departments: must be an array');
       }
+    } else if (key === 'fallbackMappings') {
+      if (!Array.isArray(value)) {
+        throw new Error('Invalid fallbackMappings: must be an array');
+      }
+      for (const item of value) {
+        if (!item || typeof item !== 'object') {
+          throw new Error('Invalid fallbackMappings: each item must be an object');
+        }
+        if (typeof (item as any).phone !== 'string' || !(item as any).phone.trim()) {
+          throw new Error('Invalid fallbackMappings: each item requires non-empty phone');
+        }
+      }
     } else if (key === 'mfaEnabled' || key === 'sipTlsEnabled' || key === 'srtpEnabled') {
       if (typeof value !== 'boolean') {
         throw new Error(`Invalid ${key}: must be a boolean`);

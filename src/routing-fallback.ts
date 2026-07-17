@@ -3,6 +3,18 @@ export interface RoutingIntent {
   extracted_value: string;
 }
 
+const FORCE_HANGUP_PATTERNS = [
+  /^วางสาย$/u,
+  /^ไม่ติดต่อแล้ว$/u,
+  /^ไม่ติดต่อแล้วให้โอนสายไป operator$/u,
+  /^ยกเลิก$/u,
+];
+
+export function shouldForceHangup(spokenTextRaw: string): boolean {
+  const spokenText = spokenTextRaw.trim().toLowerCase();
+  return FORCE_HANGUP_PATTERNS.some((pattern) => pattern.test(spokenText));
+}
+
 export function isFailedRouting(intent: RoutingIntent | null): boolean {
   return !intent || intent.target_type === 'unknown' || intent.target_type === 'error';
 }
