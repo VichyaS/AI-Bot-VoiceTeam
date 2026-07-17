@@ -81,7 +81,7 @@ test('findTeamsUserByThaiName returns duplicate matches with normalized phones',
   assert.equal(result.matches[0]?.phoneNumber, '+668101000');
   assert.equal(result.matches[1]?.phoneNumber, '+668101001');
 
-  assert.equal(mock.lastApiPath, '/users');
+  assert.equal(mock.lastApiPath, '/beta/users');
   assert.equal(mock.lastFilter.includes("startswith(displayName, 'Vichya')"), true);
   assert.equal(mock.lastFilter.includes("startswith(userPrincipalName, 'Vichya')"), true);
   assert.equal(mock.lastFilter.includes("startswith(givenName, 'Vichya')"), true);
@@ -129,7 +129,7 @@ test('findTeamsUserByThaiName resolves missing phone by querying user detail', a
       },
     ],
     {
-      [`/users/${encodedUpn}`]: {
+      [`/beta/users/${encodedUpn}`]: {
         displayName: 'Uthai Dangthong',
         userPrincipalName: upn,
         businessPhones: ['tel:+668101003'],
@@ -229,4 +229,50 @@ test('findTeamsUserByThaiName matches 4-digit extension from non-first business 
   assert.equal(result.isDuplicate, false);
   assert.equal(result.phoneNumber, '+669991001');
   assert.equal(result.transferTarget, '+669991001');
+});
+
+test('findTeamsUserByThaiName matches 4-digit extension from telephoneNumber', async () => {
+  clearEntraIdCache();
+  configureTestCredentials();
+
+  const mock = new MockGraphClient([
+    {
+      displayName: 'Uthai Dangthong',
+      userPrincipalName: 'uthai.t@wbgood.cloud',
+      telephoneNumber: 'tel:+668101003',
+      businessPhones: [],
+      mobilePhone: null,
+    },
+  ]);
+
+  setGraphClientForTesting(mock as never);
+
+  const result = await findTeamsUserByThaiName('1003');
+
+  assert.equal(result.isDuplicate, false);
+  assert.equal(result.phoneNumber, '+668101003');
+  assert.equal(result.transferTarget, '+668101003');
+});
+
+test('findTeamsUserByThaiName matches 4-digit extension from lineUri', async () => {
+  clearEntraIdCache();
+  configureTestCredentials();
+
+  const mock = new MockGraphClient([
+    {
+      displayName: 'Vichya Nttvoice',
+      userPrincipalName: 'vichyantt@wbgood.cloud',
+      lineUri: 'tel:+668101001;ext=1001',
+      businessPhones: [],
+      mobilePhone: null,
+    },
+  ]);
+
+  setGraphClientForTesting(mock as never);
+
+  const result = await findTeamsUserByThaiName('1001');
+
+  assert.equal(result.isDuplicate, false);
+  assert.equal(result.phoneNumber, '+668101001');
+  assert.equal(result.transferTarget, '+668101001');
 });

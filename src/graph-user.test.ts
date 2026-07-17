@@ -11,6 +11,11 @@ test('normalizePhoneForTransfer strips tel prefix and separators', () => {
   assert.equal(normalized, '+668101002');
 });
 
+test('normalizePhoneForTransfer handles lineUri style values', () => {
+  const normalized = normalizePhoneForTransfer('tel:+66-810-1001;ext=1001');
+  assert.equal(normalized, '+668101001');
+});
+
 test('normalizePhoneForTransfer returns null for blank values', () => {
   assert.equal(normalizePhoneForTransfer('   '), null);
   assert.equal(normalizePhoneForTransfer(null), null);

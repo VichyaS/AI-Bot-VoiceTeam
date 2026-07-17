@@ -80,9 +80,25 @@ interface GraphUserRecord {
   givenName?: string;
   surname?: string;
   mail?: string;
+  telephoneNumber?: string;
+  lineUri?: string;
+  lineURI?: string;
   businessPhones?: string[];
   mobilePhone?: string;
 }
+
+const USER_SELECT_FIELDS = [
+  'userPrincipalName',
+  'displayName',
+  'givenName',
+  'surname',
+  'mail',
+  'telephoneNumber',
+  'lineUri',
+  'lineURI',
+  'businessPhones',
+  'mobilePhone',
+];
 
 export function normalizePhoneForTransfer(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -105,6 +121,9 @@ function getPhoneLast4(raw: string | null | undefined): string | null {
 
 function getPhoneCandidates(user: GraphUserRecord): string[] {
   const rawCandidates: (string | null | undefined)[] = [
+    user.telephoneNumber,
+    user.lineUri,
+    user.lineURI,
     ...(user.businessPhones || []),
     user.mobilePhone,
   ];
@@ -162,13 +181,13 @@ async function queryGraphUsers(
   graphClient: Client,
   options?: { filter?: string; top?: number },
 ): Promise<GraphUserRecord[]> {
-  let request = graphClient.api('/users');
+  let request = graphClient.api('/beta/users');
   if (options?.filter) {
     request = request.filter(options.filter);
   }
 
   const result = await request
-    .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+    .select(USER_SELECT_FIELDS)
     .top(options?.top ?? 10)
     .get() as GraphUsersResponse;
 
@@ -179,10 +198,11 @@ async function queryGraphUsersPage(
   graphClient: Client,
   options?: { path?: string; top?: number },
 ): Promise<{ users: GraphUserRecord[]; nextLink: string | null }> {
-  let request = graphClient.api(options?.path || '/users');
+  const requestPath = options?.path || '/beta/users';
+  let request = graphClient.api(requestPath);
   if (!options?.path) {
     request = request
-      .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+      .select(USER_SELECT_FIELDS)
       .top(options?.top ?? 200);
   }
 
@@ -199,8 +219,8 @@ async function queryGraphUserByUpn(
 ): Promise<GraphUserRecord | null> {
   try {
     const result = await graphClient
-      .api(`/users/${encodeURIComponent(upn)}`)
-      .select(['userPrincipalName', 'displayName', 'givenName', 'surname', 'mail', 'businessPhones', 'mobilePhone'])
+      .api(`/beta/users/${encodeURIComponent(upn)}`)
+      .select(USER_SELECT_FIELDS)
       .get() as GraphUserRecord;
     return result;
   } catch {
@@ -210,6 +230,12 @@ async function queryGraphUserByUpn(
 
 function pickPhoneNumber(user: GraphUserRecord): string | null {
   return getPhoneCandidates(user)[0] || null;
+}
+
+function maskPhoneForLog(phone: string): string {
+  const digits = phone.replace(/\D/gu, '');
+  if (digits.length < 4) return '***';
+  return `***${digits.slice(-4)}`;
 }
 
 /**
@@ -295,6 +321,13 @@ export async function findTeamsUserByThaiName(
         if (extensionMatches.length > 1) break;
         nextLink = page.nextLink;
       } while (nextLink && pages < 20);
+
+      if (extensionMatches.length > 0) {
+        const matchedSummary = extensionMatches
+          .map((m) => `${m.displayName}(${maskPhoneForLog(m.phoneNumber || '')})`)
+          .join(', ');
+        console.log(`[findTeamsUserByThaiName] Extension ${query} candidates: ${matchedSummary}`);
+      }
 
       if (extensionMatches.length === 0) {
         console.log(`[findTeamsUserByThaiName] No user found matching extension: "${query}"`);
