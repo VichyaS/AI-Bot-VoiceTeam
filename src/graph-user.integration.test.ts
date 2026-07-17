@@ -81,7 +81,7 @@ test('findTeamsUserByThaiName returns duplicate matches with normalized phones',
   assert.equal(result.matches[0]?.phoneNumber, '+668101000');
   assert.equal(result.matches[1]?.phoneNumber, '+668101001');
 
-  assert.equal(mock.lastApiPath, '/beta/users');
+  assert.equal(mock.lastApiPath, '/users');
   assert.equal(mock.lastFilter.includes("startswith(displayName, 'Vichya')"), true);
   assert.equal(mock.lastFilter.includes("startswith(userPrincipalName, 'Vichya')"), true);
   assert.equal(mock.lastFilter.includes("startswith(givenName, 'Vichya')"), true);
@@ -129,7 +129,7 @@ test('findTeamsUserByThaiName resolves missing phone by querying user detail', a
       },
     ],
     {
-      [`/beta/users/${encodedUpn}`]: {
+      [`/users/${encodedUpn}`]: {
         displayName: 'Uthai Dangthong',
         userPrincipalName: upn,
         businessPhones: ['tel:+668101003'],

@@ -50,6 +50,7 @@ export function clearEntraIdCache(): void {
   entraIdCache.clear();
   negativeCache.clear();
   _graphClient = null;
+  _lineUriSelectSupported = true;
 }
 
 /**
@@ -94,11 +95,23 @@ const USER_SELECT_FIELDS = [
   'surname',
   'mail',
   'telephoneNumber',
-  'lineUri',
-  'lineURI',
   'businessPhones',
   'mobilePhone',
 ];
+
+const OPTIONAL_LINE_URI_FIELDS = ['lineUri', 'lineURI'];
+let _lineUriSelectSupported = true;
+
+function getUserSelectFields(): string[] {
+  return _lineUriSelectSupported
+    ? [...USER_SELECT_FIELDS, ...OPTIONAL_LINE_URI_FIELDS]
+    : [...USER_SELECT_FIELDS];
+}
+
+function isLineUriSelectError(error: unknown): boolean {
+  const msg = String((error as { message?: string })?.message || error).toLowerCase();
+  return msg.includes('lineuri') && (msg.includes('property') || msg.includes('select'));
+}
 
 export function normalizePhoneForTransfer(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -181,49 +194,85 @@ async function queryGraphUsers(
   graphClient: Client,
   options?: { filter?: string; top?: number },
 ): Promise<GraphUserRecord[]> {
-  let request = graphClient.api('/beta/users');
-  if (options?.filter) {
-    request = request.filter(options.filter);
+  const buildRequest = () => {
+    let request = graphClient.api('/users');
+    if (options?.filter) {
+      request = request.filter(options.filter);
+    }
+
+    return request
+      .select(getUserSelectFields())
+      .top(options?.top ?? 10);
+  };
+
+  try {
+    const result = await buildRequest().get() as GraphUsersResponse;
+    return result.value || [];
+  } catch (error) {
+    if (_lineUriSelectSupported && isLineUriSelectError(error)) {
+      _lineUriSelectSupported = false;
+      const result = await buildRequest().get() as GraphUsersResponse;
+      return result.value || [];
+    }
+    throw error;
   }
-
-  const result = await request
-    .select(USER_SELECT_FIELDS)
-    .top(options?.top ?? 10)
-    .get() as GraphUsersResponse;
-
-  return result.value || [];
 }
 
 async function queryGraphUsersPage(
   graphClient: Client,
   options?: { path?: string; top?: number },
 ): Promise<{ users: GraphUserRecord[]; nextLink: string | null }> {
-  const requestPath = options?.path || '/beta/users';
-  let request = graphClient.api(requestPath);
-  if (!options?.path) {
-    request = request
-      .select(USER_SELECT_FIELDS)
-      .top(options?.top ?? 200);
-  }
-
-  const result = await request.get() as GraphUsersResponse;
-  return {
-    users: result.value || [],
-    nextLink: result['@odata.nextLink'] || null,
+  const buildRequest = () => {
+    const requestPath = options?.path || '/users';
+    let request = graphClient.api(requestPath);
+    if (!options?.path) {
+      request = request
+        .select(getUserSelectFields())
+        .top(options?.top ?? 200);
+    }
+    return request;
   };
+
+  try {
+    const result = await buildRequest().get() as GraphUsersResponse;
+    return {
+      users: result.value || [],
+      nextLink: result['@odata.nextLink'] || null,
+    };
+  } catch (error) {
+    if (_lineUriSelectSupported && isLineUriSelectError(error)) {
+      _lineUriSelectSupported = false;
+      const result = await buildRequest().get() as GraphUsersResponse;
+      return {
+        users: result.value || [],
+        nextLink: result['@odata.nextLink'] || null,
+      };
+    }
+    throw error;
+  }
 }
 
 async function queryGraphUserByUpn(
   graphClient: Client,
   upn: string,
 ): Promise<GraphUserRecord | null> {
+  const buildRequest = () => graphClient
+    .api(`/users/${encodeURIComponent(upn)}`)
+    .select(getUserSelectFields());
+
   try {
-    const result = await graphClient
-      .api(`/beta/users/${encodeURIComponent(upn)}`)
-      .select(USER_SELECT_FIELDS)
-      .get() as GraphUserRecord;
+    const result = await buildRequest().get() as GraphUserRecord;
     return result;
-  } catch {
+  } catch (error) {
+    if (_lineUriSelectSupported && isLineUriSelectError(error)) {
+      _lineUriSelectSupported = false;
+      try {
+        const result = await buildRequest().get() as GraphUserRecord;
+        return result;
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 }
