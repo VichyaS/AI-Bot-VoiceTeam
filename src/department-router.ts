@@ -3,6 +3,7 @@ import { getConfig, updateConfig } from './config-manager.js';
 import { authenticateAdmin, authorizeRoles } from './auth-jwt.js';
 import { emitLog } from './system-logger.js';
 import type { DepartmentEntry } from './services/routing-types.js';
+import { normalizeDepartmentSipUri } from './services/routingService.js';
 
 const router = Router();
 router.use(authenticateAdmin);
@@ -15,8 +16,13 @@ function getDepartments(): DepartmentEntry[] {
 }
 
 function saveDepartments(depts: DepartmentEntry[], action: string, deptName: string): void {
+  const normalized = depts.map((dept) => ({
+    ...dept,
+    sipUri: normalizeDepartmentSipUri(dept.sipUri),
+  }));
+
   // Update config (persists + hot-reloads)
-  updateConfig({ departments: depts });
+  updateConfig({ departments: normalized });
 
   // Broadcast to WebSocket console
   emitLog('INFO', `Department '${deptName}' was ${action}. Synonyms re-cached. Bot routing table successfully re-loaded.`);

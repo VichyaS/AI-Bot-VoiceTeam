@@ -28,7 +28,7 @@
   "departments": [
     {
       "name": "ฝ่ายไอที",
-      "sipUri": "sip:668101001@placeholder.domain",
+      "sipUri": "sip:668101001@company.com",
       "aliases": [
         "ฝ่ายไอที",
         "IT"

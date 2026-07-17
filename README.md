@@ -356,6 +356,8 @@ sequenceDiagram
 | `transferTimeout` | `15` | Timeout (วินาที) |
 | `operatorFallbackSip` | `sip:operator-queue@...` | SIP เจ้าหน้าที่ศูนย์กลาง |
 
+หมายเหตุ: ในหน้า Department Management สามารถตั้งปลายทางแบบ extension ได้ทั้งเลขภายในธรรมดาและรูปแบบ E.164 เช่น `+668101001` ระบบจะเก็บเป็น SIP URI และโอนสายไปยังปลายทางจริงอัตโนมัติ
+
 ---
 
 ## 🤖 OpenRouter AI Model Recommendations

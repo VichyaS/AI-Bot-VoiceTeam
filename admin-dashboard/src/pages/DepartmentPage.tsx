@@ -29,6 +29,14 @@ function validateSipUri(v: string): boolean {
   return /^sip:.+@.+\..+$/i.test(v) || /^\d{2,}$/.test(v);
 }
 
+function normalizeExtensionValue(value: string): string {
+  return value.trim().replace(/\s+/gu, '');
+}
+
+function isE164OrDigits(value: string): boolean {
+  return /^(?:\+?[1-9]\d{1,14})$/.test(normalizeExtensionValue(value));
+}
+
 /* ── Department Form Modal ────────────────────────────────────────── */
 
 interface DepartmentForm {
@@ -62,8 +70,8 @@ function DeptFormModal({
   if (form.destType === 'sip' && form.destValue && !form.destValue.startsWith('sip:')) {
     errors.push('SIP URI must start with "sip:".');
   }
-  if (form.destType === 'extension' && form.destValue && !/^\d+$/.test(form.destValue)) {
-    errors.push('Extension must contain digits only.');
+  if (form.destType === 'extension' && form.destValue && !isE164OrDigits(form.destValue)) {
+    errors.push('Extension must be digits or E.164 format, such as +668101001.');
   }
 
   return (
@@ -98,13 +106,13 @@ function DeptFormModal({
               <select value={form.destType} onChange={(e) => onChange({ ...form, destType: e.target.value as 'sip' | 'extension' })}
                 className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30">
                 <option value="sip">SIP URI</option>
-                <option value="extension">Internal Extension</option>
+                <option value="extension">Internal Extension / E.164</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Destination Value *</label>
               <input type="text" value={form.destValue} onChange={(e) => onChange({ ...form, destValue: e.target.value })}
-                placeholder={form.destType === 'sip' ? 'sip:finance@company.com' : '102'}
+                placeholder={form.destType === 'sip' ? 'sip:finance@company.com' : '+668101001'}
                 className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
             </div>
           </div>
@@ -155,18 +163,18 @@ export default function DepartmentPage() {
   const formToEntry = (f: DepartmentForm): DepartmentEntry => {
     const aliases = [f.name, f.nameEn, ...f.aliasesText.split(',').map((s) => s.trim()).filter(Boolean)];
     const uniqueAliases = [...new Set(aliases)];
-    const sipUri = f.destType === 'sip' ? f.destValue : `sip:${f.destValue}@placeholder.domain`;
+    const sipUri = f.destType === 'sip' ? f.destValue : `sip:${normalizeExtensionValue(f.destValue)}@placeholder.domain`;
     return { name: f.name, sipUri, aliases: uniqueAliases };
   };
 
   const entryToForm = (e: DepartmentEntry): DepartmentForm => {
-    const isExt = /^sip:(\d+)@/i.test(e.sipUri);
+    const isExt = /^sip:(\+?[1-9]\d{1,14})@/i.test(e.sipUri);
     return {
       name: e.name,
       nameEn: e.aliases.find((a) => /^[a-z]/i.test(a) && a !== e.name) || '',
       aliasesText: e.aliases.filter((a) => a !== e.name).join(', '),
       destType: isExt ? 'extension' : 'sip',
-      destValue: isExt ? e.sipUri.replace(/^sip:(\d+)@.*$/i, '$1') : e.sipUri,
+      destValue: isExt ? e.sipUri.replace(/^sip:(\+?[1-9]\d{1,14})@.*$/i, '$1') : e.sipUri,
     };
   };
 
@@ -246,8 +254,8 @@ export default function DepartmentPage() {
                     <tr><td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-400">No departments configured yet.</td></tr>
                   )}
                   {departments.map((dept, i) => {
-                    const isExt = /^sip:(\d+)@/i.test(dept.sipUri);
-                    const destLabel = isExt ? `Extension ${dept.sipUri.replace(/^sip:(\d+)@.*$/i, '$1')}` : dept.sipUri;
+                    const isExt = /^sip:(\+?[1-9]\d{1,14})@/i.test(dept.sipUri);
+                    const destLabel = isExt ? `Extension ${dept.sipUri.replace(/^sip:(\+?[1-9]\d{1,14})@.*$/i, '$1')}` : dept.sipUri;
                     const enName = dept.aliases.find((a) => /^[a-z]/i.test(a) && a !== dept.name) || '';
                     return (
                     <tr key={i} className="hover:bg-gray-50/50 transition-colors">
