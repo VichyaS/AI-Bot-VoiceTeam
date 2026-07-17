@@ -32,6 +32,7 @@ flowchart LR
 
 - ถ้าใช้ Shared Hosting: เหมาะกับ HTTP/WebSocket เท่านั้น
 - ถ้าใช้ VPS (Hostinger VPS): เหมาะกับ Node.js app และ PM2 มากกว่า shared hosting
+- Deploy/bootstrap script สำหรับ VPS: `deploy/hostinger/bootstrap-vps.sh`
 
 ---
 
@@ -83,12 +84,21 @@ flowchart LR
 ### 3.2 ติดตั้งบน VPS
 
 ```bash
+chmod +x deploy/hostinger/bootstrap-vps.sh
+./deploy/hostinger/bootstrap-vps.sh
+```
+
+สคริปต์นี้ใช้สำหรับ bootstrap บน VPS ที่ provision แล้ว โดยจะติดตั้ง Node.js, PM2, clone repo, build app และเปิดพอร์ตที่จำเป็นรวมถึง SIP/TLS `5061/TCP`
+
+### 3.3 ติดตั้งแบบ manual บน VPS
+
+```bash
 sudo apt update
 sudo apt install -y curl git nginx nodejs npm build-essential
 sudo npm install -g pm2
 ```
 
-### 3.3 Clone และ build
+### 3.4 Clone และ build
 
 ```bash
 cd /opt
@@ -98,7 +108,7 @@ sudo npm ci
 sudo npm run build:all
 ```
 
-### 3.4 ตั้งค่า environment variables
+### 3.5 ตั้งค่า environment variables
 
 ```bash
 export JWT_SECRET="your-long-random-secret"
@@ -106,6 +116,8 @@ export ADMIN_USERNAME="superadmin"
 export ADMIN_PASSWORD_HASH="$(node -e "console.log(require('bcrypt').hashSync(process.argv[1], 10))" "your-password")"
 export PORT=8080
 export SIP_PORT=5060
+export SIP_TLS_ENABLED=true
+export SIP_TLS_PORT=5061
 export CONFIG_openRouterApiKey="your-openrouter-key"
 export CONFIG_speechKey="your-speech-key"
 export CONFIG_speechRegion="eastasia"
@@ -114,7 +126,7 @@ export CONFIG_clientId="your-client-id"
 export CONFIG_clientSecret="your-client-secret"
 ```
 
-### 3.5 รันด้วย PM2
+### 3.6 รันด้วย PM2
 
 ```bash
 pm2 start dist/webhook-server.js --name voice-bot-api --env production
@@ -122,7 +134,7 @@ pm2 save
 pm2 startup
 ```
 
-### 3.6 ตั้งค่า Nginx reverse proxy
+### 3.7 ตั้งค่า Nginx reverse proxy
 
 ```bash
 sudo tee /etc/nginx/sites-available/voice-bot-api >/dev/null <<'EOF'
@@ -144,6 +156,19 @@ EOF
 sudo ln -s /etc/nginx/sites-available/voice-bot-api /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
+```
+
+### 3.8 เปิด firewall
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 8080/tcp
+sudo ufw allow 5060/udp
+sudo ufw allow 5061/tcp
+sudo ufw allow 10000:20000/udp
+sudo ufw enable
 ```
 
 ---

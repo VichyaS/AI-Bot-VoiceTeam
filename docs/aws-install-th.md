@@ -30,11 +30,13 @@ flowchart LR
 ### คำแนะนำสำหรับ AWS
 
 - EC2 instance: Ubuntu 24.04 LTS
+- Deploy script: `deploy/aws/aws-deploy.sh`
 - Security Group:
   - TCP 22 from your IP
   - TCP 80/443 from Internet
   - TCP 8080 from SBC / your trusted IP
   - UDP 5060 from SBC / trusted network
+  - TCP 5061 from SBC / trusted network for SIP/TLS
   - UDP 10000-20000 for RTP (if used)
 - Elastic IP: แนะนำใช้เพื่อไม่ให้ IP เปลี่ยนเมื่อ restart
 - IAM role: ถ้าต้องใช้ Secrets Manager / SSM สามารถผูกได้
@@ -42,6 +44,15 @@ flowchart LR
 ---
 
 ## 2. ติดตั้งบน EC2 Ubuntu
+
+### 2.0 Provision EC2 ด้วย AWS CLI
+
+```bash
+chmod +x deploy/aws/aws-deploy.sh
+./deploy/aws/aws-deploy.sh
+```
+
+สคริปต์นี้จะสร้าง key pair, security group, เปิดพอร์ต SIP `5060/UDP`, SIP/TLS `5061/TCP`, RTP `10000-20000/UDP` และ launch EC2 instance ให้พร้อมใช้งานเบื้องต้น
 
 ### 2.1 อัปเดตเซิร์ฟเวอร์
 
@@ -74,6 +85,8 @@ export CONFIG_clientId="your-client-id"
 export CONFIG_clientSecret="your-client-secret"
 export PORT=8080
 export SIP_PORT=5060
+export SIP_TLS_ENABLED=true
+export SIP_TLS_PORT=5061
 ```
 
 > ควรเก็บค่าดังกล่าวไว้ใน Systemd EnvironmentFile หรือ AWS Systems Manager Parameter Store แทนการเก็บในไฟล์ repo
@@ -119,6 +132,7 @@ sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 8080/tcp
 sudo ufw allow 5060/udp
+sudo ufw allow 5061/tcp
 sudo ufw allow 10000:20000/udp
 sudo ufw enable
 ```
@@ -132,6 +146,7 @@ docker build -t voice-bot-api .
 docker run -d --name voice-bot-api \
   -p 8080:8080 \
   -p 5060:5060/udp \
+  -p 5061:5061/tcp \
   -e JWT_SECRET="..." \
   -e ADMIN_USERNAME="superadmin" \
   -e ADMIN_PASSWORD_HASH="..." \

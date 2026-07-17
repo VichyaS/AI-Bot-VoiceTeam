@@ -148,6 +148,8 @@ This release includes stronger transport defaults for production SIP deployments
 - Optional SRTP advertisement in SDP via `srtpEnabled` and `srtpProfile`
 - TLS certificate paths configurable through `sipTlsCertPath` and `sipTlsKeyPath`
 - Azure deployment script under [deploy/azure/azure-deploy.sh](deploy/azure/azure-deploy.sh)
+- AWS deployment script under [deploy/aws/aws-deploy.sh](deploy/aws/aws-deploy.sh)
+- Hostinger VPS bootstrap script under [deploy/hostinger/bootstrap-vps.sh](deploy/hostinger/bootstrap-vps.sh)
 
 ### Related docs
 

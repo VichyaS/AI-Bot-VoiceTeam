@@ -21,7 +21,7 @@ chmod +x deploy/azure/azure-deploy.sh
 ./deploy/azure/azure-deploy.sh
 ```
 
-ตัวสคริปต์จะสร้าง Resource Group, Ubuntu VM, Public IP และเปิดพอร์ตที่จำเป็นให้โดยอัตโนมัติ
+ตัวสคริปต์จะสร้าง Resource Group, Ubuntu VM, Public IP และเปิดพอร์ตที่จำเป็นให้โดยอัตโนมัติ รวมถึง SIP/TLS `5061/TCP`
 
 ### 1.2 SSH เข้า VM
 
@@ -56,6 +56,7 @@ flowchart LR
   - 443/TCP
   - 8080/TCP
   - 5060/UDP
+  - 5061/TCP
   - 10000-20000/UDP
 
 ### 1.3 SSH เข้า VM
@@ -154,6 +155,7 @@ sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 8080/tcp
 sudo ufw allow 5060/udp
+sudo ufw allow 5061/tcp
 sudo ufw allow 10000:20000/udp
 sudo ufw enable
 ```
