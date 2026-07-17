@@ -1,0 +1,19 @@
+[Unit]
+Description=Voice Bot API Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/AI-Bot-VoiceTeam
+EnvironmentFile=/etc/voice-bot-api/voice-bot-api.env
+ExecStart=/usr/bin/node dist/webhook-server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -145,6 +145,39 @@ sudo ufw allow 10000:20000/udp
 sudo ufw enable
 ```
 
+### 2.7 ติดตั้ง systemd service (ไม่พึ่ง shell session)
+
+ใช้ template จาก repo เพื่อให้ service auto-start หลัง reboot:
+
+```bash
+sudo mkdir -p /etc/voice-bot-api
+sudo cp deploy/aws/voice-bot-api.env.example /etc/voice-bot-api/voice-bot-api.env
+sudo nano /etc/voice-bot-api/voice-bot-api.env
+
+sudo cp deploy/aws/voice-bot-api.service /etc/systemd/system/voice-bot-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable voice-bot-api
+sudo systemctl restart voice-bot-api
+sudo systemctl status voice-bot-api --no-pager
+```
+
+> หมายเหตุ: ถ้า instance ไม่ได้ใช้ user `ubuntu` ให้แก้ค่า `User=` ในไฟล์ service เช่นเป็น `ec2-user`
+
+### 2.8 ตั้งค่า Nginx SSL template (Let's Encrypt)
+
+ใช้ template นี้เพื่อได้ HTTPS + redirect จาก HTTP:
+
+```bash
+sudo cp deploy/aws/nginx-voice-bot-api-ssl.conf /etc/nginx/conf.d/voice-bot-api.conf
+sudo sed -i 's/__DOMAIN__/your-domain.example.com/g' /etc/nginx/conf.d/voice-bot-api.conf
+
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.example.com
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
 ---
 
 ## 3. Docker deployment (optional)

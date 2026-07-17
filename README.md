@@ -149,6 +149,8 @@ This release includes stronger transport defaults for production SIP deployments
 - TLS certificate paths configurable through `sipTlsCertPath` and `sipTlsKeyPath`
 - Azure deployment script under [deploy/azure/azure-deploy.sh](deploy/azure/azure-deploy.sh)
 - AWS deployment script under [deploy/aws/aws-deploy.sh](deploy/aws/aws-deploy.sh)
+- AWS systemd template under [deploy/aws/voice-bot-api.service](deploy/aws/voice-bot-api.service)
+- AWS nginx SSL template under [deploy/aws/nginx-voice-bot-api-ssl.conf](deploy/aws/nginx-voice-bot-api-ssl.conf)
 - Hostinger VPS bootstrap script under [deploy/hostinger/bootstrap-vps.sh](deploy/hostinger/bootstrap-vps.sh)
 
 ### Related docs
