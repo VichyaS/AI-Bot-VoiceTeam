@@ -292,10 +292,13 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
           })
             .then((res) => res.json())
             .then((response: any) => {
-              if (response.activities) {
+              if (!response.activities) return;
+
+              void (async () => {
                 for (const activity of response.activities) {
                   if (activity.type === 'message' && activity.text) {
                     emitInfo(`Bot response: "${activity.text}"`);
+                    await sipEndpoint.playText(sessionId, activity.text);
                   }
                   if (activity.type === 'event' && activity.name === 'transfer') {
                     const target = activity.parameters?.target as string || '';
@@ -303,7 +306,7 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
                     sipEndpoint.sendTransfer(sessionId, target);
                   }
                 }
-              }
+              })().catch((err) => console.error('[sip] Failed to play bot response:', err));
             })
             .catch((err) => console.error('[sip] Webhook error:', err));
         },

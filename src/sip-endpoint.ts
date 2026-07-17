@@ -15,6 +15,7 @@ import { createServer as createTlsServer, type TLSSocket } from 'node:tls';
 import { networkInterfaces } from 'node:os';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 import { getConfig } from './config-manager.js';
 import { emitInfo, emitAi, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
 
@@ -43,6 +44,12 @@ interface ActiveCall {
   sbcMediaHost?: string; // SBC's media IP from INVITE SDP
   sbcMediaPort?: number; // SBC's media port from INVITE SDP
   botRtpPort?: number;   // Bot's local RTP port for this call
+  mediaRemoteHost?: string;
+  mediaRemotePort?: number;
+  rtpSeq?: number;
+  rtpTimestamp?: number;
+  rtpSsrc?: number;
+  pendingSpeech?: string[];
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -269,6 +276,116 @@ export class SipMediaEndpoint extends EventEmitter {
     this.tlsServer?.close();
   }
 
+  async playText(sessionId: string, text: string): Promise<void> {
+    const call = this.calls.get(sessionId);
+    if (!call || !text.trim()) return;
+
+    if (!call.mediaRemoteHost || !call.mediaRemotePort) {
+      call.pendingSpeech = call.pendingSpeech || [];
+      call.pendingSpeech.push(text);
+      emitInfo(`[SIP] Queued prompt for ${sessionId} until media target is known`);
+      return;
+    }
+
+    const cfg = getConfig();
+    if (!cfg.speechKey || !cfg.speechRegion) {
+      emitError('[SIP] Cannot synthesize speech: speechKey/speechRegion missing');
+      return;
+    }
+
+    const speechConfig = sdk.SpeechConfig.fromSubscription(cfg.speechKey, cfg.speechRegion);
+    speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm;
+    speechConfig.speechSynthesisVoiceName = 'th-TH-PremwadeeNeural';
+
+    const synthesizer = new sdk.SpeechSynthesizer(speechConfig);
+    try {
+      const result = await new Promise<sdk.SpeechSynthesisResult>((resolve, reject) => {
+        synthesizer.speakTextAsync(
+          text,
+          (value) => resolve(value),
+          (message) => reject(new Error(message)),
+        );
+      });
+
+      const audioBuffer = Buffer.from(result.audioData);
+      if (!audioBuffer.length) {
+        emitError('[SIP] TTS synthesis returned empty audio');
+        return;
+      }
+
+      await this.sendRtpAudio(call, audioBuffer);
+      emitInfo(`[SIP] Played TTS prompt for ${sessionId}`);
+    } finally {
+      synthesizer.close();
+    }
+  }
+
+  private async sendRtpAudio(call: ActiveCall, pcm16Audio: Buffer): Promise<void> {
+    const pcm16 = new Int16Array(pcm16Audio.buffer, pcm16Audio.byteOffset, Math.floor(pcm16Audio.byteLength / 2));
+    const downsampled = new Int16Array(Math.floor(pcm16.length / 2));
+    for (let i = 0, j = 0; i + 1 < pcm16.length; i += 2, j++) {
+      downsampled[j] = pcm16[i];
+    }
+
+    const payloadBytes = new Uint8Array(downsampled.length);
+    for (let i = 0; i < downsampled.length; i++) {
+      payloadBytes[i] = this.linearToMuLaw(downsampled[i]);
+    }
+
+    const chunkSize = 160;
+    const targetHost = call.mediaRemoteHost;
+    const targetPort = call.mediaRemotePort;
+    if (!targetHost || !targetPort) return;
+
+    if (typeof call.rtpSeq !== 'number') call.rtpSeq = Math.floor(Math.random() * 0xffff);
+    if (typeof call.rtpTimestamp !== 'number') call.rtpTimestamp = Math.floor(Math.random() * 0xffffffff);
+    if (typeof call.rtpSsrc !== 'number') call.rtpSsrc = Math.floor(Math.random() * 0xffffffff);
+
+    const rtpSocket = this.rtpSockets.get(call.sessionId);
+    if (!rtpSocket) return;
+
+    for (let offset = 0; offset < payloadBytes.length; offset += chunkSize) {
+      const payload = Buffer.from(payloadBytes.subarray(offset, Math.min(offset + chunkSize, payloadBytes.length)));
+      const packet = Buffer.alloc(12 + payload.length);
+      packet[0] = 0x80;
+      packet[1] = 0x00;
+      call.rtpSeq = (call.rtpSeq + 1) & 0xffff;
+      packet.writeUInt16BE(call.rtpSeq, 2);
+      packet.writeUInt32BE(call.rtpTimestamp, 4);
+      packet.writeUInt32BE(call.rtpSsrc, 8);
+      payload.copy(packet, 12);
+
+      await new Promise<void>((resolve, reject) => {
+        rtpSocket.send(packet, targetPort, targetHost, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      call.rtpTimestamp = (call.rtpTimestamp + chunkSize) >>> 0;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
+  private linearToMuLaw(sample: number): number {
+    const BIAS = 0x84;
+    const CLIP = 32635;
+    let sign = 0;
+    if (sample < 0) {
+      sign = 0x80;
+      sample = -sample;
+    }
+    if (sample > CLIP) sample = CLIP;
+    sample += BIAS;
+
+    let exponent = 7;
+    for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1) {
+      // no-op
+    }
+
+    const mantissa = (sample >> (exponent + 3)) & 0x0f;
+    return (~(sign | (exponent << 4) | mantissa)) & 0xff;
+  }
+
   // ── Send SIP Transfer (Refer) ──────────────────────────────────
   sendTransfer(sessionId: string, targetSipUri: string): void {
     const call = this.calls.get(sessionId);
@@ -440,7 +557,18 @@ export class SipMediaEndpoint extends EventEmitter {
     const rtpSocket = createSocket('udp4');
     this.rtpSockets.set(sessionId, rtpSocket);
 
-    rtpSocket.on('message', (rtpData) => {
+    rtpSocket.on('message', (rtpData, rinfo) => {
+      call.mediaRemoteHost = rinfo.address;
+      call.mediaRemotePort = rinfo.port;
+
+      if (call.pendingSpeech && call.pendingSpeech.length > 0) {
+        const queued = [...call.pendingSpeech];
+        call.pendingSpeech = [];
+        for (const prompt of queued) {
+          void this.playText(sessionId, prompt);
+        }
+      }
+
       const packet = parseRtpPacket(rtpData);
       if (!packet) return;
 
@@ -505,6 +633,11 @@ export class SipMediaEndpoint extends EventEmitter {
     // ACK received — call is established
     const callId = msg.headers['call-id'] || '';
     emitInfo(`[SIP] ACK received — call ${callId} established`);
+
+    const cfg = getConfig();
+    if (cfg.welcomeMessage) {
+      void this.playText(callId, cfg.welcomeMessage);
+    }
   }
 
   private handleOptions(
