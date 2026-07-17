@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_REGION="${AWS_REGION:-ap-southeast-1}"
+AWS_REGION="${AWS_REGION:-ap-southeast-3}"
 INSTANCE_NAME="${INSTANCE_NAME:-voice-bot-ec2}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-t3.small}"
 AMI_ID="${AMI_ID:-resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}"
