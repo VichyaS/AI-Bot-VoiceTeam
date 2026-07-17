@@ -289,6 +289,20 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
         cfg.speechRegion,
         (text) => {
           emitAi(`User said: "${text}"`);
+
+          const spoken = text.trim();
+          if (shouldForceHangup(spoken)) {
+            emitInfo(`Immediate force hangup detected from ASR: "${spoken}"`);
+            void sipEndpoint.playText(sessionId, 'ขอบคุณที่ติดต่อค่ะ สวัสดีค่ะ')
+              .catch((err) => {
+                console.error('[sip] Failed to play hangup prompt:', err);
+              })
+              .finally(() => {
+                sipEndpoint.sendBye(sessionId, 'Caller requested hangup');
+              });
+            return;
+          }
+
           fetch(`http://localhost:${PORT}/api/audiocodes/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -566,6 +580,9 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                       const extResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
                       return res.status(200).json(extResponse);
                     }
+                    if (!(cfg.fallbackMappings && cfg.fallbackMappings.length > 0)) {
+                      emitInfo('No fallbackMappings configured for extension lookup. Configure fallbackMappings in config.json for production fallback routing.');
+                    }
 
                     emitEntraId(`Looking up extension '${extValue}' by phone suffix in Entra ID...`);
                     const extLookup = await findTeamsUserByThaiName(extValue);
@@ -643,6 +660,9 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     resetRetry(convId);
                     const mappedResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(mappedResponse);
+                  }
+                  if (!(cfg.fallbackMappings && cfg.fallbackMappings.length > 0)) {
+                    emitInfo('No fallbackMappings configured for user lookup. Configure fallbackMappings in config.json for production fallback routing.');
                   }
 
                   if (lookupResult.matches.length === 1 && !lookupResult.transferTarget) {
