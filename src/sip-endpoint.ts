@@ -366,7 +366,6 @@ export class SipMediaEndpoint extends EventEmitter {
       packet.writeUInt32BE(call.rtpSsrc, 8);
       payload.copy(packet, 12);
 
-      // Encrypt with SRTP if context is available
       let outboundPacket: Buffer = packet;
       if (call.srtpEncrypt) {
         try {
@@ -375,6 +374,9 @@ export class SipMediaEndpoint extends EventEmitter {
           emitInfo(`[SIP] SRTP encrypt error: ${err.message} — sending plain RTP`);
         }
       }
+
+      // Guard against sending on a closed socket after call ended
+      if (!rtpSocket) return;
 
       await new Promise<void>((resolve, reject) => {
         rtpSocket.send(outboundPacket, targetPort, targetHost, (err) => {
@@ -798,41 +800,15 @@ export class SipMediaEndpoint extends EventEmitter {
     rtpSocket.bind(myPort, '0.0.0.0');
 
     // ── SRTP negotiation ─────────────────────────────────────────
+    // Note: SRTP library (RFC 3711) currently has auth tag / replay window
+    // mismatches with the SBC.  Always answer RTP/AVP until this is resolved.
     const offerBody = msg.body || '';
-    const offerTransportProfile = this.getAudioTransportProfile(offerBody);
-    const sbcSrtpMaterial = this.srtpEnabled && /SAVP(F)?$/u.test(offerTransportProfile)
-      ? this.buildDecryptMaterial(offerBody)
-      : null;
-    const answerWithSrtp = sbcSrtpMaterial !== null;
-
-    let srtpEncryptCtx: SrtpContext | undefined;
-    let botCryptoLine = '';
-    if (answerWithSrtp) {
-      try {
-        // Our encrypt context (SBC will decrypt using this)
-        const encryptInfo = this.buildEncryptMaterial();
-        srtpEncryptCtx = createSrtpContext(encryptInfo.material);
-        botCryptoLine = encryptInfo.cryptoLine;
-
-        // SBC's decrypt context (we decrypt using this)
-        const srtpDecryptCtx = createSrtpContext(sbcSrtpMaterial);
-        call.srtpDecrypt = srtpDecryptCtx;
-        call.srtpEncrypt = srtpEncryptCtx;
-
-        emitInfo(`[SIP] SRTP negotiated for call ${callId}`);
-      } catch (err: any) {
-        emitInfo(`[SIP] SRTP init failed for ${callId}: ${err.message}. Falling back to plain RTP.`);
-      }
-    }
-
-    if (this.srtpEnabled && !answerWithSrtp) {
-      emitInfo(`[SIP] SRTP enabled but call ${callId} offered ${offerTransportProfile} without SDES crypto. Using plain RTP.`);
-    }
+    const answerWithSrtp = false;
 
     const sdpMediaHost = this.getAdvertisedMediaIp();
     const sdpMediaPort = myPort;
-    const mediaTransportProfile = answerWithSrtp && srtpEncryptCtx ? 'RTP/SAVP' : 'RTP/AVP';
-    const cryptoLine = answerWithSrtp && srtpEncryptCtx ? botCryptoLine : '';
+    const mediaTransportProfile = 'RTP/AVP';
+    const cryptoLine = '';
     const sdp = [
       'v=0',
       `o=- 0 0 IN IP4 ${sdpMediaHost}`,
