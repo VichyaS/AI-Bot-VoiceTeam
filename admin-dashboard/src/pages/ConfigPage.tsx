@@ -42,6 +42,56 @@ const DownloadIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
 );
 
+function TextInput({ value, onChange, placeholder, type = 'text', error }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; type?: string; error?: string;
+}) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (show ? 'text' : 'password') : type;
+  return (
+    <div className="relative">
+      <input
+        type={inputType} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        className={`block w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500/30 ${
+          error ? 'border-red-400' : 'border-gray-300 focus:border-indigo-500'
+        } ${isPassword ? 'pr-10' : ''}`}
+      />
+      {isPassword && value && (
+        <button
+          type="button"
+          onClick={() => setShow((p) => !p)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          tabIndex={-1}
+        >
+          {show ? 'HIDE' : 'SHOW'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function NumberInput({ value, onChange, min = 1, error }: {
+  value: number; onChange: (v: number) => void; min?: number; error?: string;
+}) {
+  return (
+    <input
+      type="number" min={min} value={value} onChange={(e) => onChange(Number(e.target.value))}
+      className={`block w-28 rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors focus:ring-2 focus:ring-indigo-500/30 ${
+        error ? 'border-red-400' : 'border-gray-300 focus:border-indigo-500'
+      }`}
+    />
+  );
+}
+
+function SectionPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <h3 className="mb-4 text-base font-semibold text-gray-800">{title}</h3>
+      <div className="space-y-4">{children}</div>
+    </div>
+  );
+}
+
 /* ── Dashboard Page ───────────────────────────────────────────────── */
 export default function ConfigPage() {
   const navigate = useNavigate();
