@@ -245,11 +245,7 @@ export function updateConfig(patch: Partial<AppConfig>): AppConfig & { verified:
   // ── Update memory ────────────────────────────────────────────────
   _config = updated;
 
-  const hasEnvVars = Object.keys(process.env).some((k) => k.startsWith('CONFIG_'));
-  const envNote = hasEnvVars
-    ? ' ⚠️ (Render) อย่าลืมอัปเดต Environment Variables: ไปที่ Render Dashboard → Environment → แก้ไข CONFIG_*'
-    : '';
-  const message = 'สำเร็จ: บันทึกข้อมูลและอัปเดตพารามิเตอร์เข้าสู่ระบบหลัก (In-Memory) เรียบร้อยแล้ว' + envNote;
+  const message = 'สำเร็จ: บันทึกข้อมูลและอัปเดตพารามิเตอร์เข้าสู่ระบบหลัก (In-Memory) เรียบร้อยแล้ว';
   return { ..._config, verified: true as const, message };
 }
 

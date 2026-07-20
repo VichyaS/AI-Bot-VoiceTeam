@@ -3,6 +3,9 @@ import { getConfig, updateConfig } from './config-manager.js';
 import { maskSecrets } from './config-types.js';
 import { testOpenRouterConnection, testAzureAdConnection, testAudioCodesVoiceAI, testCallRoutingSip } from './test-connections.js';
 import { authenticateAdmin, authorizeRoles } from './auth-jwt.js';
+import { ClientSecretCredential } from '@azure/identity';
+import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
 
 const router = Router();
 
@@ -115,6 +118,72 @@ router.post('/test-connection', async (req: Request, res: Response) => {
     debugLogs: result.debugLogs,
     errorMessage: result.errorMessage,
   });
+});
+
+/**
+ * POST /api/admin/entra-users
+ *
+ * Fetches users from Microsoft Entra ID using the current live config credentials.
+ * Supports optional search filter and page size.
+ * Body: { search?: string, domain?: string, top?: number }
+ */
+router.post('/entra-users', async (req: Request, res: Response) => {
+  try {
+    const cfg = getConfig();
+    const { search, domain, top = 200 } = req.body as { search?: string; domain?: string; top?: number };
+
+    const tenantId = cfg.tenantId || process.env.AZURE_TENANT_ID || '';
+    const clientId = cfg.clientId || process.env.AZURE_CLIENT_ID || '';
+    const clientSecret = cfg.clientSecret || process.env.AZURE_CLIENT_SECRET || '';
+
+    if (!tenantId || !clientId || !clientSecret) {
+      return res.status(400).json({ error: 'Azure AD credentials not configured.' });
+    }
+
+    const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+    const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+      scopes: ['https://graph.microsoft.com/.default'],
+    });
+
+    const graphClient = Client.initWithMiddleware({ authProvider });
+
+    let request = graphClient.api('/users')
+      .select(['displayName', 'userPrincipalName', 'telephoneNumber', 'businessPhones', 'mobilePhone', 'lineUri', 'mail'])
+      .top(Math.min(top, 999));
+
+    if (search && search.trim()) {
+      const escaped = search.trim().replace(/'/g, "''");
+      request = request.filter(
+        `startswith(displayName,'${escaped}') or startswith(userPrincipalName,'${escaped}') or startswith(mail,'${escaped}')`
+      );
+    }
+
+    if (domain && domain.trim()) {
+      const d = domain.trim().replace(/^@/, '');
+      request = request.filter(`endswith(userPrincipalName,'@${d.replace(/'/g, "''")}')`);
+    }
+
+    const result = await request.get() as { value?: Record<string, unknown>[] };
+
+    const users = (result.value || []).map((u) => {
+      const phone = (u.telephoneNumber as string) || (u.businessPhones as string[])?.[0] || (u.mobilePhone as string) || '';
+      const lineUri = (u.lineUri as string) || '';
+      const ext = lineUri ? lineUri.replace(/\D/gu, '').slice(-4) : phone.replace(/\D/gu, '').slice(-4);
+      return {
+        displayName: u.displayName || '',
+        upn: u.userPrincipalName || '',
+        mail: u.mail || '',
+        phone: phone.replace(/^tel:/iu, '').trim(),
+        lineURI: lineUri,
+        extension: ext && ext.length >= 4 ? ext : '',
+      };
+    });
+
+    res.json({ users, total: users.length });
+  } catch (err: any) {
+    console.error('[admin] Entra users fetch error:', err.message);
+    res.status(500).json({ error: `Failed to fetch users: ${err.message}` });
+  }
 });
 
 export default router;
