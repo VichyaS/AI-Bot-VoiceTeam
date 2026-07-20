@@ -632,6 +632,18 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                 // ── Person name (e.g. "คุณสมชาย") ─────────────────────
                 case 'user': {
+                  // Step 1: Check fallback mappings FIRST (before Entra lookup)
+                  const fbPhone = resolveFallbackMappedPhone({
+                    name: routingResult.extracted_value,
+                  });
+                  if (fbPhone) {
+                    emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${fbPhone}`);
+                    resetRetry(convId);
+                    const fbResponse = generateTransferResponse(fbPhone, 'กำลังโอนสายให้ค่ะ');
+                    return res.status(200).json(fbResponse);
+                  }
+
+                  // Step 2: Fall back to Entra ID lookup
                   emitEntraId(`Looking up user '${routingResult.extracted_value}' in Entra ID...`);
                   const lookupResult = await findTeamsUserByThaiName(routingResult.extracted_value);
 

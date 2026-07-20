@@ -101,6 +101,28 @@ export default function FallbackMappingsPage() {
     setRows(updated); syncToForm(updated);
   };
 
+  // Load saved mappings from the backend (fresh fetch from server)
+  const loadMappings = async () => {
+    try {
+      const token = localStorage.getItem('ac_bot_admin_token');
+      const res = await fetch('/api/admin/config', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { fallbackMappings?: Array<{ name?: string; aliases?: string[]; upn?: string; extension?: string; lineURI?: string; phone: string }> };
+      const savedMappings = data.fallbackMappings || [];
+      const synced = savedMappings.map((m, i) => ({
+        id: i, name: m.name || '', aliases: (m.aliases || []).join('|'),
+        upn: m.upn || '', extension: m.extension || '', lineURI: m.lineURI || '', phone: m.phone || '',
+      }));
+      setRows(synced);
+      setNextId(synced.length);
+      setFetchStatus(`Loaded ${synced.length} mapping${synced.length === 1 ? '' : 's'} from server.`);
+    } catch (err: any) {
+      setFetchStatus(`Load failed: ${err.message}`);
+    }
+  };
+
   const applyCsvMappings = async (file: File) => {
     const csvText = await file.text();
     const result = buildFromCsv(csvText);
@@ -235,6 +257,7 @@ export default function FallbackMappingsPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-gray-800">Mappings Table <span className="ml-2 text-sm font-normal text-gray-400">({rows.length} entries)</span></h3>
             <div className="flex items-center gap-3">
+              <button type="button" onClick={loadMappings} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">↻ Load from Server</button>
               <button type="button" onClick={addRow} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">+ Add Row</button>
               <button type="button" onClick={handleSaveMappings} disabled={internalSaving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60">
                 {internalSaving ? <LoaderIcon /> : <CheckIcon />} {internalSaving ? 'Saving…' : 'Save Settings'}
