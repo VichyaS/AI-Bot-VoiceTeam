@@ -157,14 +157,16 @@ router.post('/entra-users', async (req: Request, res: Response) => {
 
       if (search && search.trim()) {
         const escaped = search.trim().replace(/'/g, "''");
-        // Use a single filter that works reliably across tenants
         request = request.filter(`startswith(displayName,'${escaped}')`);
       }
 
       if (domain && domain.trim()) {
         const d = domain.trim().replace(/^@/, '');
-        // Use a separate filter for domain: $filter=endswith(upn,'@domain.com')
-        request = request.filter(`endswith(userPrincipalName,'@${d.replace(/'/g, "''")}')`);
+        // endswith requires ConsistencyLevel=eventual header + $count=true
+        request = request
+          .header('ConsistencyLevel', 'eventual')
+          .count(true)
+          .filter(`endswith(userPrincipalName,'@${d.replace(/'/g, "''")}')`);
       }
 
       return request;
