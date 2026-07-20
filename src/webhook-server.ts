@@ -538,6 +538,13 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
               emitAi(`Fallback parsed: target_type="${routingResult.target_type}", value="${routingResult.extracted_value}"`);
             }
 
+            // Log unhandled intent when AI failed to understand (even if fallback parser converted it)
+            if (aiResult && isFailedRouting(aiResult)) {
+              logUnhandledIntent(userSpeech, aiResult).catch((err) =>
+                console.error('[webhook] Failed to log unhandled intent:', err)
+              );
+            }
+
             // ── Check retry counter for failed routing ──────────────
             if (isFailedRouting(routingResult)) {
               const attempts = incrementRetry(convId);
@@ -723,10 +730,6 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                 case 'unknown':
                 default: {
                   emitInfo('AI could not determine the target — asking user to repeat');
-                  // Log the unhandled intent for admin review
-                  logUnhandledIntent(userSpeech, aiResult).catch((err) =>
-                    console.error('[webhook] Failed to log unhandled intent:', err)
-                  );
                   const unknownActivity: BotActivity = {
                     type: BotActivityType.message,
                     text: cleanTextForThaiTts('ขออภัยค่ะ กรุณาแจ้งชื่อบุคคล แผนก หรือเบอร์ต่อที่ต้องการติดต่ออีกครั้งค่ะ'),

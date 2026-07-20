@@ -158,6 +158,21 @@ export default function FallbackMappingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.message) setFetchStatus(data.message);
+
+      // Re-fetch config to sync rows with server state
+      const configRes = await fetch('/api/admin/config', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (configRes.ok) {
+        const configData = await configRes.json() as { fallbackMappings?: Array<{ name?: string; aliases?: string[]; upn?: string; extension?: string; lineURI?: string; phone: string }> };
+        const savedMappings = configData.fallbackMappings || [];
+        const synced = savedMappings.map((m, i) => ({
+          id: i, name: m.name || '', aliases: (m.aliases || []).join('|'),
+          upn: m.upn || '', extension: m.extension || '', lineURI: m.lineURI || '', phone: m.phone || '',
+        }));
+        setRows(synced);
+        setNextId(synced.length);
+      }
     } catch (err: any) {
       setFetchStatus(`Save failed: ${err.message}`);
     } finally { setInternalSaving(false); }
