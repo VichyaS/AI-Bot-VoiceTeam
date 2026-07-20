@@ -124,7 +124,7 @@ router.post('/test-connection', async (req: Request, res: Response) => {
  * POST /api/admin/entra-users
  *
  * Fetches users from Microsoft Entra ID using the current live config credentials.
- * Supports optional search filter and page size.
+ * Supports optional search filter, domain filter, and page size.
  * Body: { search?: string, domain?: string, top?: number }
  */
 router.post('/entra-users', async (req: Request, res: Response) => {
@@ -147,32 +147,50 @@ router.post('/entra-users', async (req: Request, res: Response) => {
 
     const graphClient = Client.initWithMiddleware({ authProvider });
 
-    let request = graphClient.api('/users')
-      .select(['displayName', 'userPrincipalName', 'telephoneNumber', 'businessPhones', 'mobilePhone', 'lineUri', 'mail'])
-      .top(Math.min(top, 999));
+    // Build Graph request with optional lineUri (retry without it if unsupported)
+    const selectFields = ['displayName', 'userPrincipalName', 'telephoneNumber', 'businessPhones', 'mobilePhone', 'mail', 'lineUri'];
 
-    if (search && search.trim()) {
-      const escaped = search.trim().replace(/'/g, "''");
-      request = request.filter(
-        `startswith(displayName,'${escaped}') or startswith(userPrincipalName,'${escaped}') or startswith(mail,'${escaped}')`
-      );
+    const buildRequest = (fields: string[]) => {
+      let request = graphClient.api('/users')
+        .select(fields)
+        .top(Math.min(top, 999));
+
+      if (search && search.trim()) {
+        const escaped = search.trim().replace(/'/g, "''");
+        // Use a single filter that works reliably across tenants
+        request = request.filter(`startswith(displayName,'${escaped}')`);
+      }
+
+      if (domain && domain.trim()) {
+        const d = domain.trim().replace(/^@/, '');
+        // Use a separate filter for domain: $filter=endswith(upn,'@domain.com')
+        request = request.filter(`endswith(userPrincipalName,'@${d.replace(/'/g, "''")}')`);
+      }
+
+      return request;
+    };
+
+    let result: { value?: Record<string, unknown>[] };
+    try {
+      result = await buildRequest(selectFields).get() as { value?: Record<string, unknown>[] };
+    } catch (firstErr: any) {
+      // If lineUri is not supported, retry without it
+      if (String(firstErr?.message || '').toLowerCase().includes('lineuri')) {
+        console.log('[admin] lineUri not supported in this tenant, retrying without it');
+        result = await buildRequest(selectFields.filter((f) => f !== 'lineUri')).get() as { value?: Record<string, unknown>[] };
+      } else {
+        throw firstErr;
+      }
     }
 
-    if (domain && domain.trim()) {
-      const d = domain.trim().replace(/^@/, '');
-      request = request.filter(`endswith(userPrincipalName,'@${d.replace(/'/g, "''")}')`);
-    }
-
-    const result = await request.get() as { value?: Record<string, unknown>[] };
-
-    const users = (result.value || []).map((u) => {
-      const phone = (u.telephoneNumber as string) || (u.businessPhones as string[])?.[0] || (u.mobilePhone as string) || '';
-      const lineUri = (u.lineUri as string) || '';
+    const users = (result.value || []).map((u: Record<string, unknown>) => {
+      const phone = String(u.telephoneNumber || '') || (Array.isArray(u.businessPhones) ? (u.businessPhones as string[])[0] || '' : '') || String(u.mobilePhone || '');
+      const lineUri = String(u.lineUri || '');
       const ext = lineUri ? lineUri.replace(/\D/gu, '').slice(-4) : phone.replace(/\D/gu, '').slice(-4);
       return {
-        displayName: u.displayName || '',
-        upn: u.userPrincipalName || '',
-        mail: u.mail || '',
+        displayName: String(u.displayName || ''),
+        upn: String(u.userPrincipalName || ''),
+        mail: String(u.mail || ''),
         phone: phone.replace(/^tel:/iu, '').trim(),
         lineURI: lineUri,
         extension: ext && ext.length >= 4 ? ext : '',
