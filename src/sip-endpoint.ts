@@ -11,6 +11,7 @@
 
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:net';
+import { randomBytes } from 'node:crypto';
 import { createServer as createTlsServer, type TLSSocket } from 'node:tls';
 import { networkInterfaces } from 'node:os';
 import { EventEmitter } from 'node:events';
@@ -527,6 +528,21 @@ export class SipMediaEndpoint extends EventEmitter {
     return port;
   }
 
+  private getAudioTransportProfile(sdpBody: string): string {
+    const match = sdpBody.match(/^m=audio\s+\d+\s+([^\s]+)\s+/imu);
+    return match?.[1]?.toUpperCase() || 'RTP/AVP';
+  }
+
+  private offerSupportsSdesSrtp(sdpBody: string): boolean {
+    const transportProfile = this.getAudioTransportProfile(sdpBody);
+    return /SAVP(F)?$/u.test(transportProfile) && /a=crypto:\d+\s+/iu.test(sdpBody);
+  }
+
+  private createSrtpCryptoLine(): string {
+    const inlineKey = randomBytes(30).toString('base64');
+    return `a=crypto:1 ${this.srtpProfile} inline:${inlineKey}`;
+  }
+
   private parseSipMessage(text: string): SipMessage {
     const lines = text.split('\r\n');
     const firstLine = lines[0] || '';
@@ -654,16 +670,24 @@ export class SipMediaEndpoint extends EventEmitter {
     rtpSocket.bind(myPort, '0.0.0.0');
 
     // Advertise bot media endpoint and avoid SDP hairpin back to SBC.
+    const offerBody = msg.body || '';
+    const offerTransportProfile = this.getAudioTransportProfile(offerBody);
+    const answerWithSrtp = this.srtpEnabled && this.offerSupportsSdesSrtp(offerBody);
+    if (this.srtpEnabled && !answerWithSrtp) {
+      emitInfo(`[SIP] SRTP is enabled but call ${callId} offered ${offerTransportProfile} without SDES crypto. Answering with plain RTP.`);
+    }
+
     const sdpMediaHost = this.getAdvertisedMediaIp();
     const sdpMediaPort = myPort;
-    const cryptoLine = this.srtpEnabled ? `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQ1N1R0J1Q2N3R4T5V6W7X8Y9Z0` : '';
+    const mediaTransportProfile = answerWithSrtp ? offerTransportProfile : 'RTP/AVP';
+    const cryptoLine = answerWithSrtp ? this.createSrtpCryptoLine() : '';
     const sdp = [
       'v=0',
       `o=- 0 0 IN IP4 ${sdpMediaHost}`,
       's=SBC Bot Media',
       `c=IN IP4 ${sdpMediaHost}`,
       't=0 0',
-      `m=audio ${sdpMediaPort} RTP/AVP 0`,
+      `m=audio ${sdpMediaPort} ${mediaTransportProfile} 0`,
       'a=rtpmap:0 PCMU/8000',
       'a=sendrecv',
       cryptoLine,
