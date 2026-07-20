@@ -705,16 +705,12 @@ export class SipMediaEndpoint extends EventEmitter {
     rtpSocket.bind(myPort, '0.0.0.0');
 
     // Advertise bot media endpoint and avoid SDP hairpin back to SBC.
+    // Bot only handles plain RTP — always answer with RTP/AVP even if offer is SRTP.
     const offerBody = msg.body || '';
-    const offerTransportProfile = this.getAudioTransportProfile(offerBody);
-    const answerWithSrtp = this.srtpEnabled && this.offerSupportsSdesSrtp(offerBody);
-    if (this.srtpEnabled && !answerWithSrtp) {
-      emitInfo(`[SIP] SRTP is enabled but call ${callId} offered ${offerTransportProfile} without SDES crypto. Answering with plain RTP.`);
-    }
-
+    const answerWithSrtp = false;
     const sdpMediaHost = this.getAdvertisedMediaIp();
     const sdpMediaPort = myPort;
-    const mediaTransportProfile = answerWithSrtp ? offerTransportProfile : 'RTP/AVP';
+    const mediaTransportProfile = 'RTP/AVP';
     const cryptoLine = answerWithSrtp ? this.createSrtpCryptoLine() : '';
     const sdp = [
       'v=0',

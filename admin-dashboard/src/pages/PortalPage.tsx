@@ -197,7 +197,7 @@ export default function PortalPage() {
           </div>
 
           {/* Cards */}
-          <div className="grid gap-4 xl:gap-6 sm:grid-cols-2 lg:grid-cols-5 items-stretch">
+          <div className="grid gap-4 xl:gap-6 grid-cols-5 items-stretch">
             <PortalCard
               icon={<SettingsIcon />}
               title="System Configuration"
