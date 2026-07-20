@@ -667,6 +667,14 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                   if (lookupResult.matches.length === 1 && !lookupResult.transferTarget) {
                     emitEntraId(`User '${routingResult.extracted_value}' found but has no phone number`);
+                    const attempts = incrementRetry(convId);
+                    emitInfo(`Failed routing attempt ${attempts}/${cfg.maxRetries} for conv ${convId} (no phone)`);
+                    if (attempts >= cfg.maxRetries) {
+                      emitTransfer(`Max retries reached. Routing to fallback: ${cfg.fallbackDestination}`);
+                      const fallbackSip = cfg.fallbackDestination?.replace(/^sip:/iu, '') || 'operator-queue@company.com';
+                      const fallbackTransfer = generateTransferResponse(fallbackSip, 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ');
+                      return res.status(200).json(fallbackTransfer);
+                    }
                     const noPhoneActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts('พบข้อมูลผู้ใช้แล้ว แต่ยังไม่มีเบอร์สำหรับโอนสายค่ะ'),
@@ -675,6 +683,14 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   }
 
                   emitEntraId(`User '${routingResult.extracted_value}' not found`);
+                  const attempts = incrementRetry(convId);
+                  emitInfo(`Failed routing attempt ${attempts}/${cfg.maxRetries} for conv ${convId} (user not found)`);
+                  if (attempts >= cfg.maxRetries) {
+                    emitTransfer(`Max retries reached. Routing to fallback: ${cfg.fallbackDestination}`);
+                    const fallbackSip = cfg.fallbackDestination?.replace(/^sip:/iu, '') || 'operator-queue@company.com';
+                    const fallbackTransfer = generateTransferResponse(fallbackSip, 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ');
+                    return res.status(200).json(fallbackTransfer);
+                  }
                   const notFoundActivity: BotActivity = {
                     type: BotActivityType.message,
                     text: cleanTextForThaiTts('ไม่พบข้อมูลที่ระบุค่ะ กรุณาแจ้งชื่อหรือเบอร์ต่ออีกครั้งค่ะ'),
