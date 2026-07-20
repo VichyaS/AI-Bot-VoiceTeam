@@ -552,7 +552,7 @@ export class SipMediaEndpoint extends EventEmitter {
 
     for (let i = 1; i < lines.length; i++) {
       if (lines[i] === '') { inBody = true; continue; }
-      if (inBody) { body += lines[i]; continue; }
+      if (inBody) { body += `${lines[i]}\r\n`; continue; }
       const colonIdx = lines[i].indexOf(':');
       if (colonIdx > 0) {
         headers[lines[i].slice(0, colonIdx).trim().toLowerCase()] = lines[i].slice(colonIdx + 1).trim();
