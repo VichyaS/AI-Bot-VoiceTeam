@@ -367,7 +367,14 @@ export class SipMediaEndpoint extends EventEmitter {
       payload.copy(packet, 12);
 
       // Encrypt with SRTP if context is available
-      const outboundPacket = call.srtpEncrypt ? srtpProtect(call.srtpEncrypt, packet) : packet;
+      let outboundPacket: Buffer = packet;
+      if (call.srtpEncrypt) {
+        try {
+          outboundPacket = srtpProtect(call.srtpEncrypt, packet);
+        } catch (err: any) {
+          emitInfo(`[SIP] SRTP encrypt error: ${err.message} — sending plain RTP`);
+        }
+      }
 
       await new Promise<void>((resolve, reject) => {
         rtpSocket.send(outboundPacket, targetPort, targetHost, (err) => {
@@ -603,7 +610,9 @@ export class SipMediaEndpoint extends EventEmitter {
     }
 
     try {
-      const raw = Buffer.from(cryptoMatch[2], 'base64');
+      // Strip optional |lifetime and |mki_value:mki_length parameters after the base64 key
+      const b64 = cryptoMatch[2].split('|')[0];
+      const raw = Buffer.from(b64, 'base64');
       if (raw.length < 30) {
         emitInfo(`[SIP] SRTP crypto key too short (${raw.length}B), need 30B`);
         return null;
@@ -757,7 +766,22 @@ export class SipMediaEndpoint extends EventEmitter {
         }
       }
 
-      const rawPacket = call.srtpDecrypt ? (srtpUnprotect(call.srtpDecrypt, rtpData) ?? rtpData) : rtpData;
+      // Decrypt SRTP if negotiated — drop packet on auth failure to avoid garbage audio
+      let rawPacket: Buffer = rtpData;
+      if (call.srtpDecrypt) {
+        try {
+          const decrypted = srtpUnprotect(call.srtpDecrypt, rtpData);
+          if (decrypted) {
+            rawPacket = Buffer.from(decrypted);
+          } else {
+            emitInfo(`[SIP] SRTP auth failure for ${sessionId} — dropping packet`);
+            return;
+          }
+        } catch (err: any) {
+          emitInfo(`[SIP] SRTP decrypt error for ${sessionId}: ${err.message} — dropping packet`);
+          return;
+        }
+      }
       const packet = parseRtpPacket(rawPacket);
       if (!packet) return;
 
