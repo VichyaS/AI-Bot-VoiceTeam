@@ -2,6 +2,7 @@ import type { DepartmentEntry } from './services/routing-types.js';
 
 export interface FallbackContactMapping {
   name?: string;
+  aliases?: string[];
   upn?: string;
   extension?: string;
   lineURI?: string;

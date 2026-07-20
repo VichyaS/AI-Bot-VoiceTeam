@@ -107,6 +107,10 @@ function loadFromDisk(): AppConfig {
     try { envOverrides.departments = JSON.parse(process.env.CONFIG_departments); }
     catch { console.warn('[config] Invalid CONFIG_departments JSON'); }
   }
+  if (process.env.CONFIG_fallbackMappings) {
+    try { envOverrides.fallbackMappings = JSON.parse(process.env.CONFIG_fallbackMappings); }
+    catch { console.warn('[config] Invalid CONFIG_fallbackMappings JSON'); }
+  }
 
   if (Object.keys(envOverrides).length > 0) {
     config = { ...config, ...envOverrides };

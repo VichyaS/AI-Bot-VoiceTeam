@@ -6,6 +6,13 @@ function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/^คุณ/iu, '').replace(/\s+/gu, '');
 }
 
+function splitAliases(aliases: string[] | undefined): string[] {
+  return (aliases || [])
+    .flatMap((alias) => alias.split(/[|,;]/u))
+    .map((alias) => alias.trim())
+    .filter(Boolean);
+}
+
 function extractExtensionFromLineUri(lineUri: string): string | null {
   const extMatch = lineUri.match(/(?:^|[;?])ext=([^;?]+)/iu);
   if (extMatch?.[1]) {
@@ -38,11 +45,15 @@ export function resolveFallbackMappedPhone(params: {
     const mappedPhone = mappingToPhone(mapping);
     if (!mappedPhone) continue;
 
+    const mappingNames = [mapping.name, ...splitAliases(mapping.aliases)].filter(
+      (candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0,
+    );
+
     if (wantedUpn && mapping.upn && mapping.upn.trim().toLowerCase() === wantedUpn) {
       return mappedPhone;
     }
 
-    if (wantedName && mapping.name && normalizeText(mapping.name) === wantedName) {
+    if (wantedName && mappingNames.some((candidate) => normalizeText(candidate) === wantedName)) {
       return mappedPhone;
     }
 

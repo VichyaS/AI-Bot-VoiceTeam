@@ -33,8 +33,18 @@ export interface ConfigFormState {
   routingMode: string;
   transferTimeout: number;
   maxMatchResults: number;
+  fallbackMappings?: FallbackContactMapping[];
   operatorFallbackSip: string;
   departments?: DepartmentEntry[];
+}
+
+export interface FallbackContactMapping {
+  name?: string;
+  aliases?: string[];
+  upn?: string;
+  extension?: string;
+  lineURI?: string;
+  phone: string;
 }
 
 export interface DepartmentEntry {
@@ -71,6 +81,7 @@ export const DEFAULTS: ConfigFormState = {
   routingMode: 'Blind Transfer',
   transferTimeout: 15,
   maxMatchResults: 1,
+  fallbackMappings: [],
   operatorFallbackSip: 'sip:operator-queue@company.com',
 };
 
