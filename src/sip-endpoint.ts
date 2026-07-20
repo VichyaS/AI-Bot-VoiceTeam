@@ -192,11 +192,11 @@ export class SipMediaEndpoint extends EventEmitter {
         let buffer = '';
         socket.on('data', (chunk: Buffer) => {
           buffer += chunk.toString('utf-8');
-          // SIP messages end with \r\n\r\n (or double CRLF after Content-Length)
-          if (buffer.includes('\r\n\r\n') || buffer.includes('\n\n')) {
-            this.handleSipData(buffer, remoteAddr, remotePort, socket);
-            buffer = '';
+          const extracted = this.extractCompleteSipMessages(buffer);
+          for (const sipMessage of extracted.messages) {
+            this.handleSipData(sipMessage, remoteAddr, remotePort, socket);
           }
+          buffer = extracted.remainder;
         });
         socket.on('error', (err) => {
           console.error(`[SIP] TCP socket error: ${err.message}`);
@@ -232,10 +232,11 @@ export class SipMediaEndpoint extends EventEmitter {
             let buffer = '';
             socket.on('data', (chunk: Buffer) => {
               buffer += chunk.toString('utf-8');
-              if (buffer.includes('\r\n\r\n') || buffer.includes('\n\n')) {
-                this.handleSipData(buffer, remoteAddr, remotePort, socket as unknown as import('node:net').Socket);
-                buffer = '';
+              const extracted = this.extractCompleteSipMessages(buffer);
+              for (const sipMessage of extracted.messages) {
+                this.handleSipData(sipMessage, remoteAddr, remotePort, socket as unknown as import('node:net').Socket);
               }
+              buffer = extracted.remainder;
             });
             socket.on('error', (err) => console.error(`[SIP] TLS socket error: ${err.message}`));
           });
@@ -526,6 +527,40 @@ export class SipMediaEndpoint extends EventEmitter {
     const port = this.nextRtpPort;
     this.nextRtpPort += 2;
     return port;
+  }
+
+  private extractCompleteSipMessages(buffer: string): { messages: string[]; remainder: string } {
+    const messages: string[] = [];
+    let remainder = buffer;
+
+    while (remainder.length > 0) {
+      const crlfIndex = remainder.indexOf('\r\n\r\n');
+      const lfIndex = remainder.indexOf('\n\n');
+      let headerEnd = -1;
+      let separatorLength = 0;
+
+      if (crlfIndex >= 0 && (lfIndex < 0 || crlfIndex <= lfIndex)) {
+        headerEnd = crlfIndex;
+        separatorLength = 4;
+      } else if (lfIndex >= 0) {
+        headerEnd = lfIndex;
+        separatorLength = 2;
+      }
+
+      if (headerEnd < 0) break;
+
+      const headers = remainder.slice(0, headerEnd);
+      const contentLengthMatch = headers.match(/^content-length\s*:\s*(\d+)$/imu);
+      const contentLength = contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0;
+      const totalLength = headerEnd + separatorLength + contentLength;
+
+      if (remainder.length < totalLength) break;
+
+      messages.push(remainder.slice(0, totalLength));
+      remainder = remainder.slice(totalLength);
+    }
+
+    return { messages, remainder };
   }
 
   private getAudioTransportProfile(sdpBody: string): string {
