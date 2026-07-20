@@ -29,17 +29,33 @@ function mappingToPhone(mapping: FallbackContactMapping): string | null {
   return normalizePhoneForTransfer(mapping.phone) || normalizePhoneForTransfer(mapping.lineURI);
 }
 
-export function resolveFallbackMappedPhone(params: {
+export function resolveFallbackMappedPhone(params: { name?: string; upn?: string; extension?: string }): string | null {
+  const candidates = findFallbackMappingCandidates(params);
+  return candidates.length > 0 ? candidates[0].phone : null;
+}
+
+/**
+ * Returns ALL matching fallback mapping entries for duplicate-name detection.
+ * Each result includes the display name and phone — useful when the caller
+ * needs to choose between multiple people with the same name.
+ */
+export interface FallbackMappingCandidate {
+  name: string;
+  phone: string;
+}
+
+export function findFallbackMappingCandidates(params: {
   name?: string;
   upn?: string;
   extension?: string;
-}): string | null {
+}): FallbackMappingCandidate[] {
   const mappings = getConfig().fallbackMappings || [];
-  if (mappings.length === 0) return null;
+  if (mappings.length === 0) return [];
 
   const wantedName = params.name ? normalizeText(params.name) : '';
   const wantedUpn = params.upn ? params.upn.trim().toLowerCase() : '';
   const wantedExtension = params.extension ? params.extension.replace(/\D/gu, '') : '';
+  const results: FallbackMappingCandidate[] = [];
 
   for (const mapping of mappings) {
     const mappedPhone = mappingToPhone(mapping);
@@ -49,24 +65,22 @@ export function resolveFallbackMappedPhone(params: {
       (candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0,
     );
 
+    let matched = false;
     if (wantedUpn && mapping.upn && mapping.upn.trim().toLowerCase() === wantedUpn) {
-      return mappedPhone;
-    }
-
-    if (wantedName && mappingNames.some((candidate) => normalizeText(candidate) === wantedName)) {
-      return mappedPhone;
-    }
-
-    if (wantedExtension) {
+      matched = true;
+    } else if (wantedName && mappingNames.some((candidate) => normalizeText(candidate) === wantedName)) {
+      matched = true;
+    } else if (wantedExtension) {
       const mappedExt = mapping.extension
         ? mapping.extension.replace(/\D/gu, '')
         : (mapping.lineURI ? extractExtensionFromLineUri(mapping.lineURI) : null);
+      if (mappedExt && mappedExt === wantedExtension) matched = true;
+    }
 
-      if (mappedExt && mappedExt === wantedExtension) {
-        return mappedPhone;
-      }
+    if (matched) {
+      results.push({ name: mapping.name || mapping.upn || '', phone: mappedPhone });
     }
   }
 
-  return null;
+  return results;
 }

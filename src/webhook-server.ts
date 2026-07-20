@@ -31,7 +31,7 @@ import { logUnhandledIntent } from './unhandled-intents.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 import { getRetryCount, incrementRetry, resetRetry } from './retry-counter.js';
 import { inferRoutingFromSpeech, isFailedRouting, shouldForceHangup } from './routing-fallback.js';
-import { resolveFallbackMappedPhone } from './fallback-contact-mapping.js';
+import { resolveFallbackMappedPhone, findFallbackMappingCandidates } from './fallback-contact-mapping.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
 
@@ -633,13 +633,24 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                 // ── Person name (e.g. "คุณสมชาย") ─────────────────────
                 case 'user': {
                   // Step 1: Check fallback mappings FIRST (before Entra lookup)
-                  const fbPhone = resolveFallbackMappedPhone({
+                  const fbCandidates = findFallbackMappingCandidates({
                     name: routingResult.extracted_value,
                   });
-                  if (fbPhone) {
-                    emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${fbPhone}`);
+                  if (fbCandidates.length > 1) {
+                    // ── Duplicate names in fallback mappings! Ask caller ──
+                    const names = fbCandidates.map((c) => `${c.name} (${c.phone})`).join(' , ');
+                    emitInfo(`Found ${fbCandidates.length} fallback mappings for "${routingResult.extracted_value}": ${names}`);
+                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
+                    const duplicateActivity: BotActivity = {
+                      type: BotActivityType.message,
+                      text: cleanTextForThaiTts(duplicatePrompt),
+                    };
+                    return res.status(200).json({ activities: [duplicateActivity] });
+                  }
+                  if (fbCandidates.length === 1) {
+                    emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${fbCandidates[0].phone}`);
                     resetRetry(convId);
-                    const fbResponse = generateTransferResponse(fbPhone, 'กำลังโอนสายให้ค่ะ');
+                    const fbResponse = generateTransferResponse(fbCandidates[0].phone, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(fbResponse);
                   }
 
