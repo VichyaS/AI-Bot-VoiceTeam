@@ -41,130 +41,6 @@ const LogoutIcon = () => (
 const DownloadIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
 );
-const UploadIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-);
-
-type CsvImportResult = {
-  count: number;
-  mappings: Array<{
-    name?: string;
-    aliases?: string[];
-    upn?: string;
-    extension?: string;
-    lineURI?: string;
-    phone: string;
-  }>;
-};
-
-/* ── Input components ─────────────────────────────────────────────── */
-function TextInput({ value, onChange, placeholder, type = 'text', error }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; type?: string; error?: string;
-}) {
-  const [show, setShow] = useState(false);
-  const isPassword = type === 'password';
-  const inputType = isPassword ? (show ? 'text' : 'password') : type;
-  return (
-    <div className="relative">
-      <input
-        type={inputType} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className={`block w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500/30 ${
-          error ? 'border-red-400' : 'border-gray-300 focus:border-indigo-500'
-        } ${isPassword ? 'pr-10' : ''}`}
-      />
-      {isPassword && value && (
-        <button
-          type="button"
-          onClick={() => setShow((p) => !p)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-          tabIndex={-1}
-        >
-          {show ? 'HIDE' : 'SHOW'}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function NumberInput({ value, onChange, min = 1, error }: {
-  value: number; onChange: (v: number) => void; min?: number; error?: string;
-}) {
-  return (
-    <input
-      type="number" min={min} value={value} onChange={(e) => onChange(Number(e.target.value))}
-      className={`block w-28 rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors focus:ring-2 focus:ring-indigo-500/30 ${
-        error ? 'border-red-400' : 'border-gray-300 focus:border-indigo-500'
-      }`}
-    />
-  );
-}
-
-function SectionPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h3 className="mb-4 text-base font-semibold text-gray-800">{title}</h3>
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
-}
-
-function parseCsvLine(line: string): string[] {
-  const values: string[] = [];
-  let current = '';
-  let quoted = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      if (quoted && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        quoted = !quoted;
-      }
-      continue;
-    }
-    if (char === ',' && !quoted) {
-      values.push(current.trim());
-      current = '';
-      continue;
-    }
-    current += char;
-  }
-
-  values.push(current.trim());
-  return values;
-}
-
-function parseAliases(value: string | undefined): string[] {
-  if (!value) return [];
-  return value.split(/[|;\/]/u).map((part) => part.trim()).filter(Boolean);
-}
-
-function buildFallbackMappingsFromCsv(csvText: string): CsvImportResult {
-  const rows = csvText.split(/\r?\n/u).map((row) => row.trim()).filter(Boolean);
-  if (rows.length === 0) return { count: 0, mappings: [] };
-
-  const headers = parseCsvLine(rows[0]).map((header) => header.trim().toLowerCase());
-  const mappings = rows.slice(1).map((row) => {
-    const cells = parseCsvLine(row);
-    const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = cells[index] ?? '';
-    });
-
-    return {
-      name: record.name || record.displayname || record.display_name || '',
-      aliases: parseAliases(record.aliases || record.alias || record.alt_names || record.alternates),
-      upn: record.upn || record.username || record.user_name || '',
-      extension: record.extension || record.ext || '',
-      lineURI: record.lineuri || record.line_uri || '',
-      phone: record.phone || record.phonenumber || record.phone_number || '',
-    };
-  }).filter((mapping) => mapping.phone.trim());
-
-  return { count: mappings.length, mappings };
-}
 
 /* ── Dashboard Page ───────────────────────────────────────────────── */
 export default function ConfigPage() {
@@ -178,8 +54,6 @@ export default function ConfigPage() {
 
   const [activeTab, setActiveTab] = useState(0);
   const [testModal, setTestModal] = useState<{ open: true; service: 'openrouter' | 'azure' | 'audiocodes' | 'sip' } | { open: false }>({ open: false });
-  const [csvStatus, setCsvStatus] = useState<string | null>(null);
-  const [csvFileName, setCsvFileName] = useState<string | null>(null);
 
   const applyRecommendedPrompt = () => {
     patch({
@@ -206,14 +80,6 @@ Rules:
 - Do not explain your answer.
 - Do not wrap output in markdown.`
     });
-  };
-
-  const applyCsvMappings = async (file: File) => {
-    const csvText = await file.text();
-    const result = buildFallbackMappingsFromCsv(csvText);
-    patch({ fallbackMappings: result.mappings });
-    setCsvFileName(file.name);
-    setCsvStatus(`Loaded ${result.count} mapping${result.count === 1 ? '' : 's'} from CSV.`);
   };
 
   const tabs = [
@@ -442,38 +308,6 @@ Rules:
                 <FieldGroup label="Max Match Results" hint="Maximum number of directory matches to consider" error={errors.maxMatchResults}>
                   <NumberInput value={form.maxMatchResults} onChange={(v) => patch({ maxMatchResults: v })} min={1} error={errors.maxMatchResults} />
                 </FieldGroup>
-                <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-amber-800">Fallback Contact Mappings</p>
-                      <p className="text-xs text-amber-700">Import CSV to map Thai or English names to phone numbers for transfer fallback.</p>
-                    </div>
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">
-                      <UploadIcon />
-                      Import CSV
-                      <input
-                        type="file"
-                        accept=",text/csv,.csv"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          void applyCsvMappings(file);
-                        }}
-                      />
-                    </label>
-                  </div>
-                  <div className="text-xs text-amber-700">
-                    {csvFileName ? <span className="font-medium">{csvFileName}</span> : <span>No CSV imported yet.</span>}
-                    {csvStatus && <div className="mt-1">{csvStatus}</div>}
-                  </div>
-                  <textarea
-                    readOnly
-                    value={JSON.stringify(form.fallbackMappings || [], null, 2)}
-                    rows={8}
-                    className="block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-mono text-gray-700 outline-none"
-                  />
-                </div>
               </SectionPanel>
             )}
 

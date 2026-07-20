@@ -8,6 +8,7 @@ import MonitorPage from './pages/MonitorPage';
 import UnhandledPage from './pages/UnhandledPage';
 import DepartmentPage from './pages/DepartmentPage';
 import UsersPage from './pages/UsersPage';
+import FallbackMappingsPage from './pages/FallbackMappingsPage';
 
 export default function App() {
   return (
@@ -52,6 +53,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DepartmentPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/fallback-mappings"
+            element={
+              <ProtectedRoute allowedRole="SUPER_ADMIN">
+                <FallbackMappingsPage />
               </ProtectedRoute>
             }
           />

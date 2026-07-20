@@ -233,9 +233,17 @@ export default function PortalPage() {
             />
             <PortalCard
               icon={<ShieldCheckIcon />}
+              title="Fallback Mappings"
+              description="Import CSV mappings for Thai/English names to phone numbers. Manage aliases for name resolution when Entra ID phone fields are incomplete."
+              accent="#f59e0b"
+              onClick={() => navigate('/admin/fallback-mappings')}
+              externalUrl="/admin/fallback-mappings"
+            />
+            <PortalCard
+              icon={<ShieldCheckIcon />}
               title="User Management"
               description="Create, modify, and delete admin users. Configure role assignments, update credentials, and manage account expiration periods."
-              accent="#f59e0b"
+              accent="#d97706"
               onClick={() => navigate('/admin/users')}
               externalUrl="/admin/users"
             />
