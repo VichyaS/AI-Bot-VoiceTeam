@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+﻿import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConfigApi } from '../hooks/useConfigApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,7 +40,8 @@ interface MappingRow {
 export default function FallbackMappingsPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { form, patch, saving, toast, dismissToast, handleSave } = useConfigApi();
+  const { form, patch, saving, toast, dismissToast } = useConfigApi();
+  const [internalSaving, setInternalSaving] = useState(false);
 
   const [rows, setRows] = useState<MappingRow[]>(() => {
     const mappings = form.fallbackMappings || [];
@@ -56,6 +57,22 @@ export default function FallbackMappingsPage() {
   const [fetchStatus, setFetchStatus] = useState<string | null>(null);
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [csvStatus, setCsvStatus] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
+
+  // Sync rows from form.fallbackMappings when config loads from server
+  useEffect(() => {
+    if (initialized) return;
+    const mappings = form.fallbackMappings || [];
+    if (mappings.length > 0 || rows.length === 0) {
+      const synced = mappings.map((m, i) => ({
+        id: i, name: m.name || '', aliases: (m.aliases || []).join('|'),
+        upn: m.upn || '', extension: m.extension || '', lineURI: m.lineURI || '', phone: m.phone || '',
+      }));
+      setRows(synced);
+      setNextId(synced.length);
+      setInitialized(true);
+    }
+  }, [form.fallbackMappings, initialized, rows.length]);
 
   const syncToForm = useCallback((updatedRows: MappingRow[]) => {
     const mappings = updatedRows.filter((r) => r.phone.trim()).map((r) => ({
@@ -120,6 +137,32 @@ export default function FallbackMappingsPage() {
     } finally { setFetching(false); }
   };
 
+  // Custom save that only sends fallbackMappings to avoid validation errors from other fields
+  const handleSaveMappings = async () => {
+    setInternalSaving(true);
+    try {
+      const token = localStorage.getItem('ac_bot_admin_token');
+      const mappings = rows.filter((r) => r.phone.trim()).map((r) => ({
+        name: r.name.trim() || undefined,
+        aliases: r.aliases.trim() ? r.aliases.split(/[|;\/]/u).map((a) => a.trim()).filter(Boolean) : undefined,
+        upn: r.upn.trim() || undefined,
+        extension: r.extension.trim() || undefined,
+        lineURI: r.lineURI.trim() || undefined,
+        phone: r.phone.trim(),
+      }));
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fallbackMappings: mappings }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.message) setFetchStatus(data.message);
+    } catch (err: any) {
+      setFetchStatus(`Save failed: ${err.message}`);
+    } finally { setInternalSaving(false); }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 bg-white">
@@ -178,8 +221,8 @@ export default function FallbackMappingsPage() {
             <h3 className="text-base font-semibold text-gray-800">Mappings Table <span className="ml-2 text-sm font-normal text-gray-400">({rows.length} entries)</span></h3>
             <div className="flex items-center gap-3">
               <button type="button" onClick={addRow} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">+ Add Row</button>
-              <button type="button" onClick={handleSave} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60">
-                {saving ? <LoaderIcon /> : <CheckIcon />} {saving ? 'Saving…' : 'Save Settings'}
+              <button type="button" onClick={handleSaveMappings} disabled={internalSaving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60">
+                {internalSaving ? <LoaderIcon /> : <CheckIcon />} {internalSaving ? 'Saving…' : 'Save Settings'}
               </button>
             </div>
           </div>
