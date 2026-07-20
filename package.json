@@ -61,6 +61,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
+    "@agentdance/node-webrtc-srtp": "^1.0.13",
     "@azure/identity": "^4.13.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "bcrypt": "^6.0.0",

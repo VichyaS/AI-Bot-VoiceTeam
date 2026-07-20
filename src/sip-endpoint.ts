@@ -19,6 +19,8 @@ import fs from 'node:fs';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 import { getConfig } from './config-manager.js';
 import { emitInfo, emitAi, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
+import { createSrtpContext, srtpUnprotect, srtpProtect, ProtectionProfile } from '@agentdance/node-webrtc-srtp';
+import type { SrtpContext } from '@agentdance/node-webrtc-srtp';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -54,6 +56,10 @@ interface ActiveCall {
   remoteTargetUri?: string;
   localDialogUri?: string;
   remoteDialogUri?: string;
+  /** SRTP decrypt context (receiving from SBC) */
+  srtpDecrypt?: SrtpContext;
+  /** SRTP encrypt context (sending to SBC) */
+  srtpEncrypt?: SrtpContext;
 }
 
 // ── G.711 μ-law lookup tables ──────────────────────────────────────
@@ -360,8 +366,11 @@ export class SipMediaEndpoint extends EventEmitter {
       packet.writeUInt32BE(call.rtpSsrc, 8);
       payload.copy(packet, 12);
 
+      // Encrypt with SRTP if context is available
+      const outboundPacket = call.srtpEncrypt ? srtpProtect(call.srtpEncrypt, packet) : packet;
+
       await new Promise<void>((resolve, reject) => {
-        rtpSocket.send(packet, targetPort, targetHost, (err) => {
+        rtpSocket.send(outboundPacket, targetPort, targetHost, (err) => {
           if (err) reject(err);
           else resolve();
         });
@@ -578,6 +587,65 @@ export class SipMediaEndpoint extends EventEmitter {
     return `a=crypto:1 ${this.srtpProfile} inline:${inlineKey}`;
   }
 
+  /**
+   * Parse incoming a=crypto line and extract material for SRTP decrypt context.
+   * Format: a=crypto:<tag> <suite> inline:<base64-key>|[lifetime]|[mki]
+   * Returns masterKey (16B) and masterSalt (14B) from the 30-byte base64 inline value.
+   */
+  private parseCryptoInline(sdpBody: string): { masterKey: Buffer; masterSalt: Buffer } | null {
+    const cryptoMatch = sdpBody.match(/^a=crypto:\d+\s+([^\s]+)\s+inline:([A-Za-z0-9+/=]+)/imu);
+    if (!cryptoMatch) return null;
+
+    const suite = cryptoMatch[1].toUpperCase();
+    if (!suite.startsWith('AES_CM_128_HMAC_SHA1_80') && !suite.startsWith('AES_CM_128_HMAC_SHA1_32')) {
+      emitInfo(`[SIP] Unsupported SRTP suite "${suite}" — falling back to plain RTP`);
+      return null;
+    }
+
+    try {
+      const raw = Buffer.from(cryptoMatch[2], 'base64');
+      if (raw.length < 30) {
+        emitInfo(`[SIP] SRTP crypto key too short (${raw.length}B), need 30B`);
+        return null;
+      }
+      return { masterKey: raw.subarray(0, 16), masterSalt: raw.subarray(16, 30) };
+    } catch {
+      emitInfo('[SIP] Failed to decode SRTP crypto key');
+      return null;
+    }
+  }
+
+  /**
+   * Build SRTP keying material for the SBC's offered key (decrypt side).
+   */
+  private buildDecryptMaterial(sdpBody: string): import('@agentdance/node-webrtc-srtp').SrtpKeyingMaterial | null {
+    const parsed = this.parseCryptoInline(sdpBody);
+    if (!parsed) return null;
+    return {
+      masterKey: parsed.masterKey,
+      masterSalt: parsed.masterSalt,
+      profile: ProtectionProfile.AES_128_CM_HMAC_SHA1_80,
+    };
+  }
+
+  /**
+   * Build SRTP keying material for our own fresh key (encrypt side).
+   * The bot generates its own master key + salt so each direction has independent keys.
+   */
+  private buildEncryptMaterial(): { material: import('@agentdance/node-webrtc-srtp').SrtpKeyingMaterial; cryptoLine: string } {
+    const masterKey = randomBytes(16);
+    const masterSalt = randomBytes(14);
+    const inlineKey = Buffer.concat([masterKey, masterSalt]).toString('base64');
+    return {
+      material: {
+        masterKey,
+        masterSalt,
+        profile: ProtectionProfile.AES_128_CM_HMAC_SHA1_80,
+      },
+      cryptoLine: `a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:${inlineKey}`,
+    };
+  }
+
   private parseSipMessage(text: string): SipMessage {
     const lines = text.split('\r\n');
     const firstLine = lines[0] || '';
@@ -689,7 +757,8 @@ export class SipMediaEndpoint extends EventEmitter {
         }
       }
 
-      const packet = parseRtpPacket(rtpData);
+      const rawPacket = call.srtpDecrypt ? (srtpUnprotect(call.srtpDecrypt, rtpData) ?? rtpData) : rtpData;
+      const packet = parseRtpPacket(rawPacket);
       if (!packet) return;
 
       // Decode G.711 PCMU (payload type 0) or PCMA (payload type 8)
@@ -704,14 +773,42 @@ export class SipMediaEndpoint extends EventEmitter {
 
     rtpSocket.bind(myPort, '0.0.0.0');
 
-    // Advertise bot media endpoint and avoid SDP hairpin back to SBC.
-    // Bot only handles plain RTP — always answer with RTP/AVP even if offer is SRTP.
+    // ── SRTP negotiation ─────────────────────────────────────────
     const offerBody = msg.body || '';
-    const answerWithSrtp = false;
+    const offerTransportProfile = this.getAudioTransportProfile(offerBody);
+    const sbcSrtpMaterial = this.srtpEnabled && /SAVP(F)?$/u.test(offerTransportProfile)
+      ? this.buildDecryptMaterial(offerBody)
+      : null;
+    const answerWithSrtp = sbcSrtpMaterial !== null;
+
+    let srtpEncryptCtx: SrtpContext | undefined;
+    let botCryptoLine = '';
+    if (answerWithSrtp) {
+      try {
+        // Our encrypt context (SBC will decrypt using this)
+        const encryptInfo = this.buildEncryptMaterial();
+        srtpEncryptCtx = createSrtpContext(encryptInfo.material);
+        botCryptoLine = encryptInfo.cryptoLine;
+
+        // SBC's decrypt context (we decrypt using this)
+        const srtpDecryptCtx = createSrtpContext(sbcSrtpMaterial);
+        call.srtpDecrypt = srtpDecryptCtx;
+        call.srtpEncrypt = srtpEncryptCtx;
+
+        emitInfo(`[SIP] SRTP negotiated for call ${callId}`);
+      } catch (err: any) {
+        emitInfo(`[SIP] SRTP init failed for ${callId}: ${err.message}. Falling back to plain RTP.`);
+      }
+    }
+
+    if (this.srtpEnabled && !answerWithSrtp) {
+      emitInfo(`[SIP] SRTP enabled but call ${callId} offered ${offerTransportProfile} without SDES crypto. Using plain RTP.`);
+    }
+
     const sdpMediaHost = this.getAdvertisedMediaIp();
     const sdpMediaPort = myPort;
-    const mediaTransportProfile = 'RTP/AVP';
-    const cryptoLine = answerWithSrtp ? this.createSrtpCryptoLine() : '';
+    const mediaTransportProfile = answerWithSrtp && srtpEncryptCtx ? 'RTP/SAVP' : 'RTP/AVP';
+    const cryptoLine = answerWithSrtp && srtpEncryptCtx ? botCryptoLine : '';
     const sdp = [
       'v=0',
       `o=- 0 0 IN IP4 ${sdpMediaHost}`,
