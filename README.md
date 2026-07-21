@@ -14,11 +14,13 @@
 | Layer | Technology | Description |
 |-------|-----------|-------------|
 | **IVR Bot** | Express.js | Webhook endpoint สำหรับ AudioCodes VoiceAI Connect |
-| **AI Extractor** | OpenRouter AI | วิเคราะห์เจตนาผู้โทร (ชื่อคน/แผนก/เบอร์ต่อ) ด้วย GPT-5.6 Luna |
+| **AI Extractor** | OpenRouter AI | วิเคราะห์เจตนาผู้โทร (ชื่อคน/แผนก/เบอร์ต่อ) ด้วย GPT-4o-mini |
 | **Directory Lookup** | Microsoft Graph API | ค้นหาพนักงานจาก Entra ID พร้อมจัดการชื่อซ้ำ |
+| **Fallback Contact Mappings** | Config-based | กำหนดชื่อ/นามแฝงภาษาไทย-อังกฤษคู่กับเบอร์โอนสาย เมื่อ Entra ไม่มีข้อมูล |
+| **Department Routing** | In-memory config | จัดการแผนกและ SIP URI ผ่าน Admin Dashboard |
 | **Call Transfer** | SIP | สร้างคำสั่งโอนสายแบบ Blind / Consultative Transfer |
 | **Admin API** | Express.js + JWT | จัดการ Config, ทดสอบ Connection, WebSocket Logs |
-| **Dashboard UI** | React + Tailwind CSS | Login, Config, Monitor, Unhandled Intents, Departments |
+| **Dashboard UI** | React + Tailwind CSS | Login, Config, Monitor, Unhandled Intents, Departments, Fallback Mappings |
 | **MFA Login** | Microsoft Entra ID | รองรับการล็อกอินด้วย MFA ผ่าน MSAL |
 | **Real-time Logs** | WebSocket | ดู Log การทำงานแบบ Real-time บน Dashboard |
 
@@ -43,6 +45,8 @@ voice-bot-api/
 │   ├── department-lookup.ts           # แผนก → SIP URI mapping
 │   ├── transfer.ts                    # generateTransferResponse()
 │   ├── transfer-fallback.ts           # Fallback เมื่อโอนสายไม่สำเร็จ
+│   ├── fallback-contact-mapping.ts    # Fallback mapping resolution (name→phone)
+│   ├── routing-fallback.ts            # Speech fallback parser
 │   ├── test-connections.ts            # ทดสอบ OpenRouter & Azure AD
 │   ├── unhandled-intents.ts           # บันทึกคำพูดที่ AI แยกไม่ออก
 │   ├── unhandled-router.ts            # API สำหรับ review unhandled intents
@@ -52,7 +56,7 @@ voice-bot-api/
 │   ├── tts-cleaner.ts                 # ทำความสะอาดข้อความก่อน TTS
 │   ├── cache.ts                       # TTL Cache สำหรับ Entra ID + Departments
 │   ├── user-store.ts                  # อ่าน/เขียน users.json
-├── sip-endpoint.ts                   # SIP Media Endpoint (TCP/UDP)
+│   ├── sip-endpoint.ts                # SIP Media Endpoint (TCP/UDP)
 ├── speech-asr.ts                     # Azure Speech-to-Text processor
 │   ├── websocket/                     # Core SDK classes
 │   │   ├── bot-api.ts                 # BotApiWebSocket
@@ -81,6 +85,7 @@ voice-bot-api/
 │       │   ├── MonitorPage.tsx         # KPI + active calls + console
 │       │   ├── DepartmentPage.tsx      # จัดการแผนก
 │       │   ├── UnhandledPage.tsx       # Review unhandled intents
+│       │   ├── FallbackMappingsPage.tsx # Fallback Contact Mappings (CSV/Entra fetch/ editable table)
 │       │   └── UsersPage.tsx           # จัดการผู้ใช้
 │       └── hooks/useConfigApi.ts       # Fetch + save + test connections
 ├── config.json                         # Runtime config (ไม่ commit ขึ้น git)
@@ -287,14 +292,15 @@ flowchart LR
 | `GET` | `/api/admin/config` | อ่าน config (ซ่อน secret) |
 | `POST` | `/api/admin/config` | อัปเดต config (hot-reload) |
 | `POST` | `/api/admin/test-connection` | ทดสอบ OpenRouter, Azure AD, AudioCodes VoiceAI, หรือ SIP Routing |
-| `GET` | `/api/admin/unhandled` | รายการ unhandled intents |
-| `POST` | `/api/admin/unhandled/:id/resolve` | Mark as resolved |
+| `GET` | `/api/admin/unhandled-logs` | รายการ unhandled intents |
+| `POST` | `/api/admin/unhandled-logs/resolve` | Mark as resolved |
 | `GET` | `/api/admin/departments` | รายการแผนก |
 | `POST` | `/api/admin/departments` | อัปเดตแผนก |
 | `GET` | `/api/admin/users` | รายการผู้ใช้ |
 | `POST` | `/api/admin/users` | เพิ่มผู้ใช้ |
 | `PUT` | `/api/admin/users/:username` | แก้ไขผู้ใช้ |
 | `DELETE` | `/api/admin/users/:username` | ลบผู้ใช้ |
+| `POST` | `/api/admin/entra-users` | ดึงรายชื่อผู้ใช้จาก Entra ID สำหรับ Fallback Mappings |
 | `WS` | `/api/admin/ws/logs?token=<JWT>` | Real-time log stream |
 
 ---
@@ -309,6 +315,7 @@ sequenceDiagram
     participant Bot as Bot API
     participant AI as OpenRouter AI
     participant Entra as Microsoft Entra ID
+    participant Cfg as Fallback Mappings
 
     Caller->>SBC: โทรเข้า
     SBC->>VAIC: ส่งสาย
@@ -319,11 +326,39 @@ sequenceDiagram
     VAIC->>Bot: Webhook (activities)
     Bot->>AI: extractThaiName()
     AI-->>Bot: {"target_type":"user","extracted_value":"สมชาย"}
-    Bot->>Entra: findTeamsUserByThaiName()
-    Entra-->>Bot: somchai@company.com
-    Bot-->>VAIC: Transfer SIP URI
+    
+    alt เช็ก Fallback Mappings ก่อน
+        Bot->>Cfg: resolveFallbackMappedPhone(name)
+        Cfg-->>Bot: found → phone number
+        Bot-->>VAIC: Transfer SIP URI
+    else Entra ID Lookup
+        Bot->>Entra: findTeamsUserByThaiName()
+        alt พบชื่อซ้ำ
+            Entra-->>Bot: 2+ matches
+            Bot-->>VAIC: TTS "พบชื่อซ้ำ 2 ราย..."
+        else พบ user เดียว
+            Entra-->>Bot: somchai@company.com
+            alt มี phone number
+                Bot-->>VAIC: Transfer SIP URI
+            else ไม่มี phone
+                Bot->>Cfg: resolveFallbackMappedPhone(upn)
+                alt พบใน mapping
+                    Cfg-->>Bot: phone number
+                    Bot-->>VAIC: Transfer SIP URI
+                else ไม่พบ
+                    Bot->>Retry: incrementRetry()
+                    alt ครบ 3 ครั้ง
+                        Bot-->>VAIC: Transfer to operator fallback
+                    else ยังไม่ครบ
+                        Bot-->>VAIC: TTS "ไม่พบข้อมูล..."
+                    end
+                end
+            end
+        end
+    end
+    
     VAIC->>SBC: โอนสาย
-    SBC->>Microsoft Teams: สายถึงคุณสมชาย
+    SBC->>Microsoft Teams: สายถึงปลายทาง
 ```
 
 ---
@@ -340,21 +375,34 @@ sequenceDiagram
 | `fallbackDestination` | `sip:operator-queue@...` | ปลายทางเมื่อโอนไม่สำเร็จ |
 | `maxRetries` | `3` | จำนวนครั้งที่ให้พูดใหม่ |
 | `openRouterApiKey` | `""` | OpenRouter API Key |
-| `aiModelId` | `openai/gpt-5.6-luna` | AI Model |
+| `aiModelId` | `openai/gpt-4o-mini` | AI Model |
 | `temperature` | `0` | Temperature (0 = deterministic) |
 | `maxTokens` | `150` | Max tokens ต่อ response |
+| `topP` | `1` | Nucleus sampling parameter |
+| `systemPrompt` | `""` | Custom system prompt (ถ้าไม่ตั้งจะใช้ default Thai IVR prompt) |
 | `tenantId` | `""` | Entra ID Tenant ID |
 | `clientId` | `""` | Entra ID App Client ID |
 | `clientSecret` | `""` | Entra ID Client Secret |
+| `secretExpiryDate` | `""` | วันที่หมดอายุของ Client Secret (แจ้งเตือนล่วงหน้า 30 วัน) |
+| `searchScope` | `""` | กรองผู้ใช้เฉพาะโดเมน (เช่น @company.com) |
 | `mfaEnabled` | `false` | เปิด/ปิด MFA Login |
 | `mfaAllowedDomain` | `""` | จำกัดโดเมนอีเมลที่ MFA Login ได้ |
+| `speechKey` | `""` | Azure Speech Services Key |
+| `speechRegion` | `""` | Azure Speech Services Region |
 | `webhookPublicUrl` | `""` | Public URL สำหรับทดสอบ AudioCodes VoiceAI |
 | `sipDomain` | `sip:company.com` | SIP Domain |
 | `sbcPort` | `5061` | SBC SIP Port |
+| `sipTlsEnabled` | `false` | เปิด/ปิด SIP/TLS |
+| `sipTlsPort` | `5061` | SIP/TLS Port |
+| `srtpEnabled` | `false` | เปิด/ปิด SRTP |
+| `srtpProfile` | `AES_CM_128_HMAC_SHA1_80` | SRTP Profile |
 | `transferProtocol` | `TLS` | TLS/TCP/UDP |
 | `routingMode` | `Blind Transfer` | Blind หรือ Consultative |
 | `transferTimeout` | `15` | Timeout (วินาที) |
+| `maxMatchResults` | `1` | จำนวนผลลัพธ์สูงสุดตอนค้นหา |
 | `operatorFallbackSip` | `sip:operator-queue@...` | SIP เจ้าหน้าที่ศูนย์กลาง |
+| `fallbackMappings` | `[]` | Fallback Contact Mappings (ชื่อ→เบอร์) |
+| `departments` | `[]` | Department routing table |
 
 หมายเหตุ: ในหน้า Department Management สามารถตั้งปลายทางแบบ extension ได้ทั้งเลขภายในธรรมดาและรูปแบบ E.164 เช่น `+668101001` ระบบจะเก็บเป็น SIP URI และโอนสายไปยังปลายทางจริงอัตโนมัติ
 
@@ -389,11 +437,12 @@ sequenceDiagram
 | Route | Page | Description |
 |-------|------|-------------|
 | `/login` | Login | เข้าสู่ระบบ (Password หรือ MFA) |
-| `/portal` | Portal | หน้าแรก |
+| `/portal` | Portal | หน้าแรก แสดงทางลัดไปยังเมนูต่างๆ |
 | `/admin/config` | Config | ตั้งค่า AudioCodes, OpenRouter, Entra ID, SIP |
 | `/admin/monitor` | Monitor | สถิติ, สายที่กำลังใช้งาน, Console Log |
 | `/admin/departments` | Departments | จัดการแผนกและ SIP URI |
 | `/admin/unhandled` | Unhandled | ตรวจสอบคำพูดที่ AI แยกไม่ออก |
+| `/admin/fallback-mappings` | Fallback Mappings | จัดการ Fallback Contact Mappings (CSV/Entra fetch/ตารางแก้ไข) |
 | `/admin/users` | Users | จัดการผู้ใช้ระบบ |
 
 ---
