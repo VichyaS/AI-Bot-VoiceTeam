@@ -612,6 +612,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     if (mappedPhone) {
                       emitTransfer(`Routing extension ${extValue} via fallback mapping to phone: ${mappedPhone}`);
                       resetRetry(convId);
+                      logCallRouting(convId, 'extension-fallback', mappedPhone);
                       const extResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
                       return res.status(200).json(extResponse);
                     }
@@ -635,6 +636,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     if (extLookup.transferTarget) {
                       emitTransfer(`Routing extension ${extValue} to phone: ${extLookup.transferTarget}`);
                       resetRetry(convId);
+                      logCallRouting(convId, 'extension-entra', extLookup.transferTarget);
                       const extResponse = generateTransferResponse(extLookup.transferTarget, `กำลังโอนสายให้ค่ะ`);
                       return res.status(200).json(extResponse);
                     }
