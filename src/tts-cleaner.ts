@@ -88,6 +88,15 @@ export function cleanTextForThaiTts(text: string): string {
 }
 
 /**
+ * Wraps text in SSML prosody tags to slow down speech rate for natural pacing.
+ * The AudioCodes VoiceAI Connect supports limited SSML — this wraps the
+ * entire prompt so names and numbers are spoken at a comfortable pace.
+ */
+export function wrapWithSsml(text: string): string {
+  return `<speak><prosody rate="slow">${text}</prosody></speak>`;
+}
+
+/**
  * Formats an extension number for TTS clarity.
  * e.g. "101" → "เบอร์ 1 0 1"
  */

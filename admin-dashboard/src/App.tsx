@@ -9,6 +9,7 @@ import UnhandledPage from './pages/UnhandledPage';
 import DepartmentPage from './pages/DepartmentPage';
 import UsersPage from './pages/UsersPage';
 import FallbackMappingsPage from './pages/FallbackMappingsPage';
+import ReportPage from './pages/ReportPage';
 
 export default function App() {
   return (
@@ -61,6 +62,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRole="SUPER_ADMIN">
                 <FallbackMappingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/report"
+            element={
+              <ProtectedRoute>
+                <ReportPage />
               </ProtectedRoute>
             }
           />

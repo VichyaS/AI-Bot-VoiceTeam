@@ -30,6 +30,11 @@ const ShieldCheckIcon = () => (
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 12 15 15 9" />
   </svg>
 );
+const ReportIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="size-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="19" x2="20" y2="19" /><polyline points="4 15 8 11 12 15 20 5" /><polyline points="16 5 20 5 20 9" />
+  </svg>
+);
 const ExternalLinkIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
 );
@@ -197,7 +202,7 @@ export default function PortalPage() {
           </div>
 
           {/* Cards */}
-          <div className="grid gap-4 xl:gap-6 grid-cols-6 items-stretch">
+          <div className="grid gap-4 xl:gap-6 grid-cols-7 items-stretch">
             <PortalCard
               icon={<SettingsIcon />}
               title="System Configuration"
@@ -238,6 +243,14 @@ export default function PortalPage() {
               accent="#f59e0b"
               onClick={() => navigate('/admin/fallback-mappings')}
               externalUrl="/admin/fallback-mappings"
+            />
+            <PortalCard
+              icon={<ReportIcon />}
+              title="Call Report"
+              description="View IVR usage statistics, call history, and download CSV reports with daily/monthly summaries."
+              accent="#059669"
+              onClick={() => navigate('/admin/report')}
+              externalUrl="/admin/report"
             />
             <PortalCard
               icon={<ShieldCheckIcon />}

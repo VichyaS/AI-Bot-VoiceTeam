@@ -46,6 +46,17 @@ export default function UnhandledSpeechReview() {
     saving: boolean;
   } | null>(null);
 
+  // Contact Mapping dialog state
+  const [mappingDialog, setMappingDialog] = useState<{
+    log: UnhandledLogEntry;
+    name: string;
+    phone: string;
+    upn: string;
+    extension: string;
+    lineURI: string;
+    saving: boolean;
+  } | null>(null);
+
   // ── Fetch logs ──────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
     if (!token) return;
@@ -142,6 +153,49 @@ export default function UnhandledSpeechReview() {
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleString('th-TH', { timeStyle: 'short', dateStyle: 'short' });
 
+  // ── Add to Contact Mappings ─────────────────────────────────────
+  const handleAddToContactMappings = async () => {
+    if (!mappingDialog || !token) return;
+    const { log, name, phone, upn, extension, lineURI } = mappingDialog;
+    setMappingDialog({ ...mappingDialog, saving: true });
+
+    try {
+      const configRes = await fetch('/api/admin/config', { headers: authHeaders(token) });
+      if (!configRes.ok) throw new Error('Failed to fetch config');
+      const cfg = await configRes.json() as { fallbackMappings?: any[] };
+
+      const mappings = cfg.fallbackMappings || [];
+      mappings.push({
+        name: name.trim() || log.userSpeech.trim(),
+        aliases: undefined,
+        upn: upn.trim() || undefined,
+        extension: extension.trim() || undefined,
+        lineURI: lineURI.trim() || undefined,
+        phone: phone.trim(),
+      });
+
+      const updateRes = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ fallbackMappings: mappings }),
+      });
+      if (!updateRes.ok) throw new Error('Failed to update config');
+
+      await fetch('/api/admin/unhandled-logs/resolve', {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ id: log.id, note: 'added to contact mappings' }),
+      });
+
+      setLogs((prev) => prev.filter((l) => l.id !== log.id));
+      setMappingDialog(null);
+      setToast({ message: 'Added to Contact Mappings and log resolved.', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Operation failed.', type: 'error' });
+      setMappingDialog((prev) => prev ? { ...prev, saving: false } : null);
+    }
+  };
+
   /* ── Render ────────────────────────────────────────────────────── */
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -190,6 +244,12 @@ export default function UnhandledSpeechReview() {
                   >
                     Ignore
                   </button>
+                  <button
+                    onClick={() => setMappingDialog({ log, name: log.userSpeech, phone: '', upn: '', extension: '', lineURI: '', saving: false })}
+                    className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                  >
+                    + Add as Contact Mapping
+                  </button>
                 </div>
               </div>
             ))}
@@ -235,6 +295,42 @@ export default function UnhandledSpeechReview() {
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
               >
                 {dialog.saving ? 'Saving…' : 'Add Alias & Resolve'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add to Contact Mappings Dialog ─────────────────────────── */}
+      {mappingDialog && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-lg">
+            <h3 className="text-sm font-semibold text-gray-800">Add to Contact Mappings</h3>
+            <p className="mt-1 text-xs text-gray-500">Map &ldquo;<strong>{mappingDialog.log.userSpeech}</strong>&rdquo; to a phone number for fallback routing.</p>
+            <div className="mt-3 space-y-3">
+              <div><label className="text-xs font-medium text-gray-600">Name</label>
+                <input type="text" value={mappingDialog.name} onChange={(e) => setMappingDialog({ ...mappingDialog, name: e.target.value })}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30" /></div>
+              <div><label className="text-xs font-medium text-gray-600">Phone *</label>
+                <input type="text" value={mappingDialog.phone} onChange={(e) => setMappingDialog({ ...mappingDialog, phone: e.target.value })} placeholder="Required"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-gray-600">UPN</label>
+                  <input type="text" value={mappingDialog.upn} onChange={(e) => setMappingDialog({ ...mappingDialog, upn: e.target.value })}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Extension</label>
+                  <input type="text" value={mappingDialog.extension} onChange={(e) => setMappingDialog({ ...mappingDialog, extension: e.target.value })}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30" /></div>
+              </div>
+              <div><label className="text-xs font-medium text-gray-600">Line URI</label>
+                <input type="text" value={mappingDialog.lineURI} onChange={(e) => setMappingDialog({ ...mappingDialog, lineURI: e.target.value })}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30" /></div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setMappingDialog(null)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleAddToContactMappings} disabled={mappingDialog.saving || !mappingDialog.phone.trim()}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60">
+                {mappingDialog.saving ? 'Saving…' : 'Add to Mappings & Resolve'}
               </button>
             </div>
           </div>

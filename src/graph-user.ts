@@ -195,12 +195,11 @@ function isFourDigitExtension(value: string): boolean {
 
 export function formatDuplicateUserChoicesForThaiTts(matches: readonly EntraUserMatch[]): string {
   return matches
-    .map((m) => {
+    .map((m, i) => {
       const last4 = getPhoneLast4(m.phoneNumber) || '';
       const spokenLast4 = last4.split('').join(' ');
-      return last4
-        ? `${m.displayName} เบอร์ลงท้าย ${spokenLast4}`
-        : `${m.displayName} ไม่พบเบอร์`;
+      const detail = last4 ? `เบอร์ลงท้าย ${spokenLast4}` : 'ไม่พบเบอร์';
+      return `คนที่ ${i + 1} ${m.displayName} (${detail})`;
     })
     .join(' , ');
 }

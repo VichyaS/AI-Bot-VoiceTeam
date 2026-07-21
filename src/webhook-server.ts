@@ -34,6 +34,8 @@ import { inferRoutingFromSpeech, isFailedRouting, shouldForceHangup } from './ro
 import { resolveFallbackMappedPhone, findFallbackMappingCandidates } from './fallback-contact-mapping.js';
 import { VoiceAiAsrProcessor } from './speech-asr.js';
 import { SipMediaEndpoint } from './sip-endpoint.js';
+import { logCallStart, logCallEnd, logCallRouting } from './call-stats.js';
+import callStatsRouter from './call-stats-router.js';
 
 // ── Global startup error handler ────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -410,6 +412,7 @@ app.use('/api/admin/auth', mfaRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/admin', unhandledRouter);
 app.use('/api/admin', departmentRouter);
+app.use('/api/admin', callStatsRouter);
 app.use('/api/admin/config', testRouteRouter);
 app.use('/api/admin', usersRouter);
 
@@ -596,7 +599,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                     if (extLookup.isDuplicate && extLookup.matches.length > 1) {
                       const choices = formatDuplicateUserChoicesForThaiTts(extLookup.matches);
-                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
+                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาพิมพ์หมายเลข 1 ถึง ${extLookup.matches.length} เพื่อเลือกผู้ที่ต้องการติดต่อค่ะ`;
                       const duplicateActivity: BotActivity = {
                         type: BotActivityType.message,
                         text: cleanTextForThaiTts(duplicatePrompt),
@@ -640,7 +643,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     // ── Duplicate names in fallback mappings! Ask caller ──
                     const names = fbCandidates.map((c) => `${c.name} (${c.phone})`).join(' , ');
                     emitInfo(`Found ${fbCandidates.length} fallback mappings for "${routingResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาพิมพ์หมายเลข 1 ถึง ${fbCandidates.length} เพื่อเลือกผู้ที่ต้องการติดต่อค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),
@@ -662,7 +665,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     // ── Duplicate names found! Inform the caller ──────────
                     const names = formatDuplicateUserChoicesForThaiTts(lookupResult.matches);
                     emitEntraId(`Found ${lookupResult.matches.length} users matching "${routingResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาแจ้งชื่อผู้ที่ต้องการติดต่ออีกครั้งค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาพิมพ์หมายเลข 1 ถึง ${lookupResult.matches.length} เพื่อเลือกผู้ที่ต้องการติดต่อค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),
