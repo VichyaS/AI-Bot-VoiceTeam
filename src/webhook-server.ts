@@ -523,7 +523,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
             const userSpeech = String(activity.text || '').trim();
             const convId = payload.conversationId || payload.caller || 'unknown';
 
-            // ── Silence detection: if ASR returns empty after 5+ seconds, treat as failed routing ──
+            // ── Silence detection: if ASR returns empty, treat as failed routing ──
             if (!userSpeech) {
               emitInfo(`Silence detected for conv ${convId} — treating as failed routing attempt`);
               const attempts = incrementRetry(convId);
@@ -537,7 +537,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
               }
               const retryActivity: BotActivity = {
                 type: BotActivityType.message,
-                text: cleanTextForThaiTts(cfg.fallbackMessage),
+                text: cleanTextForThaiTts('ไม่ยินเสียงของท่าน กรุณาพูดใหม่อีกครั้ง'),
               };
               return res.status(200).json({ activities: [retryActivity] });
             }
@@ -662,6 +662,16 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                 // ── Person name (e.g. "คุณสมชาย") ─────────────────────
                 case 'user': {
+                  // Step 0: Check if the extracted value matches a department alias
+                  const deptSip = getDepartmentSipUri(routingResult.extracted_value);
+                  if (deptSip) {
+                    emitTransfer(`Routing '${routingResult.extracted_value}' as department alias to: ${deptSip}`);
+                    const deptTarget = deptSip.replace(/^sip:/iu, '');
+                    resetRetry(convId);
+                    logCallRouting(convId, 'department-alias', deptTarget);
+                    const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยังแผนกที่เกี่ยวข้องค่ะ`);
+                    return res.status(200).json(deptResponse);
+                  }
                   // Step 1: Check fallback mappings FIRST (before Entra lookup)
                   const fbCandidates = findFallbackMappingCandidates({
                     name: routingResult.extracted_value,
