@@ -243,7 +243,7 @@ Rules:
                     <BrainIcon />
                     Use recommended operator prompt
                   </button>
-                  <FieldGroup label="CSV Template" hint="Download a sample CSV format for fallback mappings">
+                  <FieldGroup label="CSV Template" hint="Download a sample CSV format for contact mappings">
                     <a
                       href="data:text/csv;charset=utf-8,name,aliases,upn,extension,lineURI,phone%0Aวิชยะ,วิชญะ|vichya|vichaya,wichaya@company.com,1001,sip:1001@company.com,1001%0Aอุทัย,uthai,uthai@company.com,1002,sip:1002@company.com,tel:+6621234567"
                       download="fallback-mappings-template.csv"

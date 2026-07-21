@@ -207,7 +207,7 @@ export default function FallbackMappingsPage() {
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/portal')} className="flex size-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50"><ArrowLeftIcon /></button>
             <div className="flex size-9 items-center justify-center rounded-lg bg-amber-600 text-white text-sm font-bold">FM</div>
-            <div><h1 className="text-lg font-bold text-gray-900">Fallback Contact Mappings</h1><p className="text-xs text-gray-500">Manage Thai/English name to phone mappings for transfer fallback</p></div>
+            <div><h1 className="text-lg font-bold text-gray-900">Entra ID Contact Mappings</h1><p className="text-xs text-gray-500">Manage Thai/English name to phone mappings for transfer fallback</p></div>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400">{user?.username}</span>

@@ -238,7 +238,7 @@ export default function PortalPage() {
             />
             <PortalCard
               icon={<ShieldCheckIcon />}
-              title="Fallback Mappings"
+              title="Entra ID Mappings"
               description="Import CSV mappings for Thai/English names to phone numbers. Manage aliases for name resolution when Entra ID phone fields are incomplete."
               accent="#f59e0b"
               onClick={() => navigate('/admin/fallback-mappings')}
