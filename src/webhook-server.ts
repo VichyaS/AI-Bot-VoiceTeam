@@ -603,7 +603,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                     if (extLookup.isDuplicate && extLookup.matches.length > 1) {
                       const choices = formatDuplicateUserChoicesForThaiTts(extLookup.matches);
-                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาแจ้งหมายเลขคนที่ท่านต้องการติดต่อค่ะ`;
+                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาแจ้งหมายเลขเบอร์ภายใน 4 หลัก ของคนที่ท่านต้องการติดต่อค่ะ`;
                       const duplicateActivity: BotActivity = {
                         type: BotActivityType.message,
                         text: cleanTextForThaiTts(duplicatePrompt),
@@ -647,7 +647,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     // ── Duplicate names in fallback mappings! Ask caller ──
                     const names = fbCandidates.map((c) => `${c.name} (${c.phone})`).join(' , ');
                     emitInfo(`Found ${fbCandidates.length} fallback mappings for "${routingResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาแจ้งหมายเลขคนที่ท่านต้องการติดต่อค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาแจ้งหมายเลขเบอร์ภายใน 4 หลัก ของคนที่ท่านต้องการติดต่อค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),
@@ -670,7 +670,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     // ── Duplicate names found! Inform the caller ──────────
                     const names = formatDuplicateUserChoicesForThaiTts(lookupResult.matches);
                     emitEntraId(`Found ${lookupResult.matches.length} users matching "${routingResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาแจ้งหมายเลขคนที่ท่านต้องการติดต่อค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาแจ้งหมายเลขเบอร์ภายใน 4 หลัก ของคนที่ท่านต้องการติดต่อค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),

@@ -33,8 +33,9 @@ export default function ReportPage() {
   const { user, logout, token } = useAuth();
   const [stats, setStats] = useState<CallStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(365);
+  const [days, setDays] = useState(0.0035);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -46,6 +47,13 @@ export default function ReportPage() {
   }, [days, token]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  // Auto-refresh every 30 seconds when enabled
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchStats, 30000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchStats]);
 
   const downloadCsv = () => {
     const t = token || localStorage.getItem('ac_bot_admin_token');
@@ -87,7 +95,7 @@ export default function ReportPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700">Period:</label>
-            <select value={days} onChange={(e) => setDays(parseInt(e.target.value))}
+            <select value={days} onChange={(e) => setDays(parseFloat(e.target.value))}
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30">
               <option value={0.0035}>Last 5 min</option>
               <option value={0.042}>Last 1 hour</option>
@@ -101,6 +109,10 @@ export default function ReportPage() {
             </select>
           </div>
           <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-emerald-600 size-4" />
+              Auto-refresh
+            </label>
             <button onClick={fetchStats} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">↻ Refresh</button>
             <button onClick={downloadCsv} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"><DownloadIcon /> Download CSV</button>
           </div>
