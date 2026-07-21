@@ -67,6 +67,8 @@ export interface AppConfig {
   maxMatchResults: number;
   /** Static fallback mapping when Entra user phone fields are not ready */
   fallbackMappings?: FallbackContactMapping[];
+  /** TTS prompt when max retries reached and routing to operator fallback */
+  fallbackTransferPrompt: string;
   /** SIP URI for the central operator / call queue when a transfer fails */
   operatorFallbackSip?: string;
   /** Department routing table — editable by admins via the dashboard */
@@ -108,6 +110,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   transferTimeout: 15,
   maxMatchResults: 1,
   fallbackMappings: [],
+  fallbackTransferPrompt: 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ',
   operatorFallbackSip: 'sip:operator-queue@company.com',
 };
 

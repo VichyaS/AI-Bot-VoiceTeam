@@ -34,6 +34,7 @@ export interface ConfigFormState {
   transferTimeout: number;
   maxMatchResults: number;
   fallbackMappings?: FallbackContactMapping[];
+  fallbackTransferPrompt: string;
   operatorFallbackSip: string;
   departments?: DepartmentEntry[];
 }
@@ -82,6 +83,7 @@ export const DEFAULTS: ConfigFormState = {
   transferTimeout: 15,
   maxMatchResults: 1,
   fallbackMappings: [],
+  fallbackTransferPrompt: 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ',
   operatorFallbackSip: 'sip:operator-queue@company.com',
 };
 

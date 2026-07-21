@@ -213,7 +213,7 @@ export default function ReportPage() {
                     <tr className="border-b border-gray-200 bg-gray-50">
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Time</th>
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Caller</th>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Target</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Transfer To</th>
                       <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Duration</th>
                       <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
                     </tr>
@@ -223,7 +223,7 @@ export default function ReportPage() {
                       <tr key={c.callId || i} className="hover:bg-gray-50/50">
                         <td className="px-4 py-2 text-xs text-gray-500">{new Date(c.startTime).toLocaleString('th-TH')}</td>
                         <td className="px-4 py-2 font-medium text-gray-800">{c.caller}</td>
-                        <td className="px-4 py-2 text-gray-600">{c.targetValue || c.callee || '-'}</td>
+                        <td className="px-4 py-2 text-gray-600">{c.targetValue || '-'}</td>
                         <td className="px-4 py-2 text-right text-gray-600">{c.durationSec ? formatDuration(c.durationSec) : '-'}</td>
                         <td className="px-4 py-2 text-center">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${

@@ -518,11 +518,31 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
             }
           }
 
-          // User speech
-          if (activity.type === BotActivityType.message && activity.text) {
-            const userSpeech = String(activity.text);
+          // User speech (or silence)
+          if (activity.type === BotActivityType.message) {
+            const userSpeech = String(activity.text || '').trim();
             const convId = payload.conversationId || payload.caller || 'unknown';
-            const spokenText = userSpeech.trim();
+
+            // ── Silence detection: if ASR returns empty after 5+ seconds, treat as failed routing ──
+            if (!userSpeech) {
+              emitInfo(`Silence detected for conv ${convId} — treating as failed routing attempt`);
+              const attempts = incrementRetry(convId);
+              emitInfo(`Silence routing attempt ${attempts}/${cfg.maxRetries} for conv ${convId}`);
+              if (attempts >= cfg.maxRetries) {
+                emitTransfer(`Max retries reached (silence). Routing to fallback: ${cfg.fallbackDestination}`);
+                const fallbackSip = cfg.fallbackDestination?.replace(/^sip:/iu, '') || 'operator-queue@company.com';
+                const fallbackPrompt = cfg.fallbackTransferPrompt || 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ';
+                const fallbackTransfer = generateTransferResponse(fallbackSip, fallbackPrompt);
+                return res.status(200).json(fallbackTransfer);
+              }
+              const retryActivity: BotActivity = {
+                type: BotActivityType.message,
+                text: cleanTextForThaiTts(cfg.fallbackMessage),
+              };
+              return res.status(200).json({ activities: [retryActivity] });
+            }
+
+            const spokenText = userSpeech;
             console.log('[webhook] User said:', userSpeech);
 
             if (shouldForceHangup(spokenText)) {
@@ -561,7 +581,8 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                 // Max retries reached — transfer to fallback destination
                 emitTransfer(`Max retries reached. Routing to fallback: ${cfg.fallbackDestination}`);
                 const fallbackSip = cfg.fallbackDestination?.replace(/^sip:/iu, '') || 'operator-queue@company.com';
-                const fallbackTransfer = generateTransferResponse(fallbackSip, 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ');
+                const fallbackPrompt = cfg.fallbackTransferPrompt || 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ';
+                const fallbackTransfer = generateTransferResponse(fallbackSip, fallbackPrompt);
                 return res.status(200).json(fallbackTransfer);
               }
             }
@@ -709,10 +730,11 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     emitEntraId(`User '${routingResult.extracted_value}' found but has no phone number`);
                     const attempts = incrementRetry(convId);
                     emitInfo(`Failed routing attempt ${attempts}/${cfg.maxRetries} for conv ${convId} (no phone)`);
-                    if (attempts >= cfg.maxRetries) {
+                                        if (attempts >= cfg.maxRetries) {
                       emitTransfer(`Max retries reached. Routing to fallback: ${cfg.fallbackDestination}`);
                       const fallbackSip = cfg.fallbackDestination?.replace(/^sip:/iu, '') || 'operator-queue@company.com';
-                      const fallbackTransfer = generateTransferResponse(fallbackSip, 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ');
+                      const fallbackPrompt = cfg.fallbackTransferPrompt || 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ';
+                      const fallbackTransfer = generateTransferResponse(fallbackSip, fallbackPrompt);
                       return res.status(200).json(fallbackTransfer);
                     }
                     const noPhoneActivity: BotActivity = {
@@ -728,7 +750,8 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   if (attempts >= cfg.maxRetries) {
                     emitTransfer(`Max retries reached. Routing to fallback: ${cfg.fallbackDestination}`);
                     const fallbackSip = cfg.fallbackDestination?.replace(/^sip:/iu, '') || 'operator-queue@company.com';
-                    const fallbackTransfer = generateTransferResponse(fallbackSip, 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ');
+                    const fallbackPrompt = cfg.fallbackTransferPrompt || 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ';
+                    const fallbackTransfer = generateTransferResponse(fallbackSip, fallbackPrompt);
                     return res.status(200).json(fallbackTransfer);
                   }
                   const notFoundActivity: BotActivity = {

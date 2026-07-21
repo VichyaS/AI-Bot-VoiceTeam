@@ -358,6 +358,11 @@ Rules:
                 <FieldGroup label="Max Match Results" hint="Maximum number of directory matches to consider" error={errors.maxMatchResults}>
                   <NumberInput value={form.maxMatchResults} onChange={(v) => patch({ maxMatchResults: v })} min={1} error={errors.maxMatchResults} />
                 </FieldGroup>
+                <FieldGroup label="Fallback Transfer Prompt (ครบ 3 ครั้ง)" hint="ข้อความ TTS ที่เล่นเมื่อโอนสายไปยังเจ้าหน้าที่ operator หลังจากหาชื่อไม่เจอครบ 3 ครั้ง">
+                  <textarea value={form.fallbackTransferPrompt} onChange={(e) => patch({ fallbackTransferPrompt: e.target.value })}
+                    placeholder="ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ" rows={2}
+                    className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
+                </FieldGroup>
               </SectionPanel>
             )}
 
