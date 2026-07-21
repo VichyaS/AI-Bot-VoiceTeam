@@ -144,6 +144,7 @@ botWsServer.on('connection', (ws: WsSocket, req) => {
         const caller = msg.caller || 'unknown';
         console.log(`[bot-ws] ✅ Received Start: session=${sessionId}, caller=${caller}`);
         emitCallEvent('call-started', sessionId, caller);
+        logCallStart(sessionId, caller, 'sip-user');
         emitInfo(`Incoming call from ${caller}`);
         emitInfo(`[DEBUG] Media formats: ${(msg.mediaFormats || []).join(', ')}`);
 
@@ -350,6 +351,7 @@ sipEndpoint.onAudioData = (sessionId, audioBuffer) => {
 
 sipEndpoint.onCallEnded = (sessionId) => {
   emitCallEvent('call-ended', sessionId, 'sip-caller');
+  logCallEnd(sessionId, 'completed');
   const processor = asrProcessors.get(sessionId);
   if (processor) { processor.stop(); asrProcessors.delete(sessionId); }
 };
@@ -466,6 +468,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
         const caller = payload.caller || 'unknown';
         const convId = payload.conversationId || caller;
         emitCallEvent('call-started', convId, caller);
+        logCallStart(convId, caller, '');
         emitInfo(`Incoming call accepted from ${caller}`);
         // Reset retry counter for this conversation
         resetRetry(convId);
@@ -490,6 +493,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
           ) {
             const endedConvId = payload.conversationId || payload.caller || 'unknown';
             emitCallEvent('call-ended', endedConvId, payload.caller || 'unknown');
+            logCallEnd(endedConvId, 'completed');
             emitInfo('Call ended by caller or hung up');
             console.log('[webhook] Conversation ended (hangup).');
             return res.status(200).json({ received: true });
@@ -599,7 +603,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
 
                     if (extLookup.isDuplicate && extLookup.matches.length > 1) {
                       const choices = formatDuplicateUserChoicesForThaiTts(extLookup.matches);
-                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาพิมพ์หมายเลข 1 ถึง ${extLookup.matches.length} เพื่อเลือกผู้ที่ต้องการติดต่อค่ะ`;
+                      const duplicatePrompt = `พบเบอร์ต่อ ${extValue} ซ้ำกัน ${extLookup.matches.length} ราย คือ ${choices} กรุณาแจ้งหมายเลขคนที่ท่านต้องการติดต่อค่ะ`;
                       const duplicateActivity: BotActivity = {
                         type: BotActivityType.message,
                         text: cleanTextForThaiTts(duplicatePrompt),
@@ -628,7 +632,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   const target = `${extValue}@${sipDomain}`;
                   emitTransfer(`Routing to extension: ${extValue} → sip:${target}`);
                   resetRetry(convId);
-
+                  logCallRouting(convId, 'extension', target);
                   const extResponse = generateTransferResponse(target, 'กำลังโอนสายให้ค่ะ');
                   return res.status(200).json(extResponse);
                 }
@@ -643,7 +647,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     // ── Duplicate names in fallback mappings! Ask caller ──
                     const names = fbCandidates.map((c) => `${c.name} (${c.phone})`).join(' , ');
                     emitInfo(`Found ${fbCandidates.length} fallback mappings for "${routingResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาพิมพ์หมายเลข 1 ถึง ${fbCandidates.length} เพื่อเลือกผู้ที่ต้องการติดต่อค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${fbCandidates.length} ราย คือ ${names} กรุณาแจ้งหมายเลขคนที่ท่านต้องการติดต่อค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),
@@ -653,6 +657,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   if (fbCandidates.length === 1) {
                     emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${fbCandidates[0].phone}`);
                     resetRetry(convId);
+                    logCallRouting(convId, 'fallback', fbCandidates[0].phone);
                     const fbResponse = generateTransferResponse(fbCandidates[0].phone, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(fbResponse);
                   }
@@ -665,7 +670,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     // ── Duplicate names found! Inform the caller ──────────
                     const names = formatDuplicateUserChoicesForThaiTts(lookupResult.matches);
                     emitEntraId(`Found ${lookupResult.matches.length} users matching "${routingResult.extracted_value}": ${names}`);
-                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาพิมพ์หมายเลข 1 ถึง ${lookupResult.matches.length} เพื่อเลือกผู้ที่ต้องการติดต่อค่ะ`;
+                    const duplicatePrompt = `พบชื่อซ้ำ ${lookupResult.matches.length} ราย คือ ${names} กรุณาแจ้งหมายเลขคนที่ท่านต้องการติดต่อค่ะ`;
                     const duplicateActivity: BotActivity = {
                       type: BotActivityType.message,
                       text: cleanTextForThaiTts(duplicatePrompt),
@@ -680,6 +685,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   if (lookupResult.transferTarget) {
                     emitTransfer(`Routing to user phone: ${lookupResult.transferTarget}`);
                     resetRetry(convId);
+                    logCallRouting(convId, 'user', lookupResult.transferTarget || '');
                     const response = generateTransferResponse(lookupResult.transferTarget, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(response);
                   }
@@ -691,6 +697,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   if (mappedPhone) {
                     emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${mappedPhone}`);
                     resetRetry(convId);
+                    logCallRouting(convId, 'entra-fallback', mappedPhone);
                     const mappedResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
                     return res.status(200).json(mappedResponse);
                   }
@@ -740,6 +747,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     const deptTarget = deptSip.replace(/^sip:/iu, '');
                     emitTransfer(`Routing to department: sip:${deptTarget}`);
                     resetRetry(convId);
+                    logCallRouting(convId, 'department', deptTarget);
                     const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยัง${routingResult.extracted_value}ค่ะ`);
                     return res.status(200).json(deptResponse);
                   }

@@ -56,6 +56,7 @@ export default function UnhandledSpeechReview() {
     lineURI: string;
     saving: boolean;
   } | null>(null);
+  const [existingMappings, setExistingMappings] = useState<Array<{name?: string; phone: string; upn?: string}>>([]);
 
   // ── Fetch logs ──────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
@@ -84,6 +85,20 @@ export default function UnhandledSpeechReview() {
   }, [token]);
 
   useEffect(() => { fetchLogs(); fetchDepartments(); }, [fetchLogs, fetchDepartments]);
+
+  // ── Fetch existing mappings for the dialog ───────────────────────
+  const fetchMappings = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/admin/config', { headers: authHeaders(token) });
+      if (res.ok) {
+        const cfg = await res.json() as { fallbackMappings?: Array<{name?: string; phone: string; upn?: string}> };
+        setExistingMappings(cfg.fallbackMappings || []);
+      }
+    } catch { /* ignore */ }
+  }, [token]);
+
+  useEffect(() => { if (mappingDialog) fetchMappings(); }, [mappingDialog, fetchMappings]);
 
   // ── Actions ──────────────────────────────────────────────────────
   const ignoreLog = async (log: UnhandledLogEntry) => {
@@ -308,6 +323,24 @@ export default function UnhandledSpeechReview() {
             <h3 className="text-sm font-semibold text-gray-800">Add to Contact Mappings</h3>
             <p className="mt-1 text-xs text-gray-500">Map &ldquo;<strong>{mappingDialog.log.userSpeech}</strong>&rdquo; to a phone number for fallback routing.</p>
             <div className="mt-3 space-y-3">
+              {existingMappings.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Or select existing mapping to add alias</label>
+                  <select onChange={(e) => {
+                    const idx = parseInt(e.target.value);
+                    if (idx >= 0 && existingMappings[idx]) {
+                      const m = existingMappings[idx];
+                      setMappingDialog((prev) => prev ? { ...prev, name: m.name || prev.name, phone: m.phone, upn: m.upn || '', extension: '', lineURI: '' } : null);
+                    }
+                  }}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30">
+                    <option value="-1">— Select existing —</option>
+                    {existingMappings.map((m, i) => (
+                      <option key={i} value={i}>{m.name || m.upn || 'unnamed'} ({m.phone})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div><label className="text-xs font-medium text-gray-600">Name</label>
                 <input type="text" value={mappingDialog.name} onChange={(e) => setMappingDialog({ ...mappingDialog, name: e.target.value })}
                   className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30" /></div>

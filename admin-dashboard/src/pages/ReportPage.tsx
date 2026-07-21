@@ -89,6 +89,10 @@ export default function ReportPage() {
             <label className="text-sm font-medium text-gray-700">Period:</label>
             <select value={days} onChange={(e) => setDays(parseInt(e.target.value))}
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30">
+              <option value={0.0035}>Last 5 min</option>
+              <option value={0.042}>Last 1 hour</option>
+              <option value={0.25}>Last 6 hours</option>
+              <option value={1}>Last 24 hours</option>
               <option value={7}>Last 7 days</option>
               <option value={30}>Last 30 days</option>
               <option value={90}>Last 3 months</option>
