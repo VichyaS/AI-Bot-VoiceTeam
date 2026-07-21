@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 import { getConfig } from './config-manager.js';
 import { emitInfo, emitAi, emitTransfer, emitError, emitCallEvent } from './system-logger.js';
+import { logCallStart, logCallEnd } from './call-stats.js';
 import { createSrtpContext, srtpUnprotect, srtpProtect, ProtectionProfile } from '@agentdance/node-webrtc-srtp';
 import type { SrtpContext } from '@agentdance/node-webrtc-srtp';
 
@@ -750,6 +751,7 @@ export class SipMediaEndpoint extends EventEmitter {
     if (!this.shouldSuppressIncomingMonitorLog(caller)) {
       emitInfo(`[SIP] Incoming call from ${caller} to ${callee}`);
       emitCallEvent('call-started', sessionId, caller);
+      logCallStart(sessionId, caller, callee);
     }
 
     // Create RTP socket for receiving audio
@@ -903,6 +905,7 @@ export class SipMediaEndpoint extends EventEmitter {
     if (call) {
       emitInfo(`[SIP] Call ended: ${callId}`);
       emitCallEvent('call-ended', callId, call.caller);
+      logCallEnd(callId, 'completed');
       if (this.onCallEnded) this.onCallEnded(callId);
       remoteAddr = call.remoteAddr;
       remotePort = call.remotePort;
@@ -940,6 +943,7 @@ export class SipMediaEndpoint extends EventEmitter {
     const call = this.calls.get(callId);
     if (call) {
       emitCallEvent('call-ended', callId, call.caller);
+      logCallEnd(callId, 'failed', 'cancelled');
       const rtpSock = this.rtpSockets.get(callId);
       if (rtpSock) { rtpSock.close(); this.rtpSockets.delete(callId); }
       this.calls.delete(callId);
