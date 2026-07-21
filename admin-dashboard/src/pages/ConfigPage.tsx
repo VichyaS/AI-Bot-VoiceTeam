@@ -216,6 +216,11 @@ Rules:
                     placeholder="ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ" rows={2}
                     className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
                 </FieldGroup>
+                <FieldGroup label="Silence Prompt (ไม่มีเสียงผู้โทร)" hint="ข้อความ TTS ที่เล่นเมื่อระบบไม่ได้รับเสียงจากผู้โทร เช่น เงียบ หรือไมค์ไม่ได้เปิด">
+                  <textarea value={form.silencePrompt} onChange={(e) => patch({ silencePrompt: e.target.value })}
+                    placeholder="ไม่ยินเสียงของท่าน กรุณาพูดใหม่อีกครั้ง" rows={2}
+                    className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
+                </FieldGroup>
               </SectionPanel>
             )}
 

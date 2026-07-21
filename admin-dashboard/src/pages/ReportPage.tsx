@@ -223,7 +223,7 @@ export default function ReportPage() {
                       <tr key={c.callId || i} className="hover:bg-gray-50/50">
                         <td className="px-4 py-2 text-xs text-gray-500">{new Date(c.startTime).toLocaleString('th-TH')}</td>
                         <td className="px-4 py-2 font-medium text-gray-800">{c.caller}</td>
-                        <td className="px-4 py-2 text-gray-600">{c.targetValue || '-'}</td>
+                        <td className="px-4 py-2 text-gray-600">{c.targetValue ? c.targetValue.replace(/@.*/u, '') : '-'}</td>
                         <td className="px-4 py-2 text-right text-gray-600">{c.durationSec ? formatDuration(c.durationSec) : '-'}</td>
                         <td className="px-4 py-2 text-center">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
