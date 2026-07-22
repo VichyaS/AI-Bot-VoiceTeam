@@ -522,6 +522,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
           if (activity.type === BotActivityType.message) {
             const userSpeech = String(activity.text || '').trim();
             const convId = payload.conversationId || payload.caller || 'unknown';
+            const callerName = payload.caller || 'ผู้โทร';
 
             // ── Silence detection: if ASR returns empty, treat as failed routing ──
             if (!userSpeech) {
@@ -615,7 +616,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                       emitTransfer(`Routing extension ${extValue} via fallback mapping to phone: ${mappedPhone}`);
                       resetRetry(convId);
                       logCallRouting(convId, 'extension-fallback', mappedPhone);
-                      const extResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
+                      const extResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ', callerName);
                       return res.status(200).json(extResponse);
                     }
                     if (!(cfg.fallbackMappings && cfg.fallbackMappings.length > 0)) {
@@ -639,7 +640,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                       emitTransfer(`Routing extension ${extValue} to phone: ${extLookup.transferTarget}`);
                       resetRetry(convId);
                       logCallRouting(convId, 'extension-entra', extLookup.transferTarget);
-                      const extResponse = generateTransferResponse(extLookup.transferTarget, `กำลังโอนสายให้ค่ะ`);
+                      const extResponse = generateTransferResponse(extLookup.transferTarget, 'กำลังโอนสายให้ค่ะ', callerName);
                       return res.status(200).json(extResponse);
                     }
 
@@ -658,7 +659,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                   emitTransfer(`Routing to extension: ${extValue} → sip:${target}`);
                   resetRetry(convId);
                   logCallRouting(convId, 'extension', target);
-                  const extResponse = generateTransferResponse(target, 'กำลังโอนสายให้ค่ะ');
+                  const extResponse = generateTransferResponse(target, 'กำลังโอนสายให้ค่ะ', callerName);
                   return res.status(200).json(extResponse);
                 }
 
@@ -671,7 +672,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     const deptTarget = deptSip.replace(/^sip:/iu, '');
                     resetRetry(convId);
                     logCallRouting(convId, 'department-alias', deptTarget);
-                    const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยังแผนกที่เกี่ยวข้องค่ะ`);
+                    const deptResponse = generateTransferResponse(deptTarget, 'กำลังโอนสายไปยังแผนกที่เกี่ยวข้องค่ะ', callerName);
                     return res.status(200).json(deptResponse);
                   }
                   // Step 1: Check fallback mappings FIRST (before Entra lookup)
@@ -693,7 +694,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${fbCandidates[0].phone}`);
                     resetRetry(convId);
                     logCallRouting(convId, 'fallback', fbCandidates[0].phone);
-                    const fbResponse = generateTransferResponse(fbCandidates[0].phone, 'กำลังโอนสายให้ค่ะ');
+                    const fbResponse = generateTransferResponse(fbCandidates[0].phone, 'กำลังโอนสายให้ค่ะ', callerName);
                     return res.status(200).json(fbResponse);
                   }
 
@@ -721,7 +722,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     emitTransfer(`Routing to user phone: ${lookupResult.transferTarget}`);
                     resetRetry(convId);
                     logCallRouting(convId, 'user', lookupResult.transferTarget || '');
-                    const response = generateTransferResponse(lookupResult.transferTarget, 'กำลังโอนสายให้ค่ะ');
+                    const response = generateTransferResponse(lookupResult.transferTarget, 'กำลังโอนสายให้ค่ะ', callerName);
                     return res.status(200).json(response);
                   }
 
@@ -733,7 +734,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     emitTransfer(`Routing user '${routingResult.extracted_value}' via fallback mapping to phone: ${mappedPhone}`);
                     resetRetry(convId);
                     logCallRouting(convId, 'entra-fallback', mappedPhone);
-                    const mappedResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ');
+                    const mappedResponse = generateTransferResponse(mappedPhone, 'กำลังโอนสายให้ค่ะ', callerName);
                     return res.status(200).json(mappedResponse);
                   }
                   if (!(cfg.fallbackMappings && cfg.fallbackMappings.length > 0)) {
@@ -787,7 +788,7 @@ app.post('/api/audiocodes/webhook', async (req: Request, res: Response) => {
                     emitTransfer(`Routing to department: sip:${deptTarget}`);
                     resetRetry(convId);
                     logCallRouting(convId, 'department', deptTarget);
-                    const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยัง${routingResult.extracted_value}ค่ะ`);
+                    const deptResponse = generateTransferResponse(deptTarget, `กำลังโอนสายไปยัง${routingResult.extracted_value}ค่ะ`, callerName);
                     return res.status(200).json(deptResponse);
                   }
 
