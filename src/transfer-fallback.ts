@@ -3,7 +3,10 @@ import { getConfig } from './config-manager.js';
 import { emitTransfer, emitInfo } from './system-logger.js';
 import { cleanTextForThaiTts } from './tts-cleaner.js';
 
-const FALLBACK_PROMPT = 'ขออภัยค่ะ ขอสายปลายทางไม่มีผู้รับสาย ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางให้นะคะ';
+function getFallbackPrompt(): string {
+  const cfg = getConfig();
+  return cfg.busyPrompt || 'ขออภัยค่ะ สายปลายทางไม่สะดวกรับสาย';
+}
 
 /**
  * Generates a fallback AudioCodes response when a transfer attempt fails
@@ -31,7 +34,7 @@ export function generateTransferFallbackResponse(
   // 1. TTS prompt to soothe the caller
   const promptActivity: BotActivity = {
     type: BotActivityType.message,
-    text: cleanTextForThaiTts(FALLBACK_PROMPT),
+    text: cleanTextForThaiTts(getFallbackPrompt()),
   };
 
   // 2. Transfer event to central operator

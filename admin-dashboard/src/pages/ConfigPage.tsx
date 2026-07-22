@@ -221,6 +221,11 @@ Rules:
                     placeholder="ไม่ยินเสียงของท่าน กรุณาพูดใหม่อีกครั้ง" rows={2}
                     className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
                 </FieldGroup>
+                <FieldGroup label="Busy Prompt (สายไม่ว่าง)" hint="ข้อความ TTS ที่เล่นเมื่อผู้รับสายไม่สะดวกรับสาย หรือไม่รับสาย">
+                  <textarea value={form.busyPrompt} onChange={(e) => patch({ busyPrompt: e.target.value })}
+                    placeholder="ขออภัยค่ะ สายปลายทางไม่สะดวกรับสาย" rows={2}
+                    className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
+                </FieldGroup>
               </SectionPanel>
             )}
 

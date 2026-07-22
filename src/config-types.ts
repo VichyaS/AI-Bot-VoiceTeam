@@ -69,6 +69,8 @@ export interface AppConfig {
   fallbackMappings?: FallbackContactMapping[];
   /** TTS prompt when max retries reached and routing to operator fallback */
   fallbackTransferPrompt: string;
+  /** TTS prompt when target is busy / rejects the call */
+  busyPrompt: string;
   /** TTS prompt when ASR returns empty (silence) */
   silencePrompt: string;
   /** SIP URI for the central operator / call queue when a transfer fails */
@@ -113,6 +115,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   maxMatchResults: 1,
   fallbackMappings: [],
   fallbackTransferPrompt: 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ',
+  busyPrompt: 'ขออภัยค่ะ สายปลายทางไม่สะดวกรับสาย',
   silencePrompt: 'ไม่ยินเสียงของท่าน กรุณาพูดใหม่อีกครั้ง',
   operatorFallbackSip: 'sip:operator-queue@company.com',
 };

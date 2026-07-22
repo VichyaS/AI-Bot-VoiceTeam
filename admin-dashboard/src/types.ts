@@ -35,6 +35,7 @@ export interface ConfigFormState {
   maxMatchResults: number;
   fallbackMappings?: FallbackContactMapping[];
   fallbackTransferPrompt: string;
+  busyPrompt: string;
   silencePrompt: string;
   operatorFallbackSip: string;
   departments?: DepartmentEntry[];
@@ -85,6 +86,7 @@ export const DEFAULTS: ConfigFormState = {
   maxMatchResults: 1,
   fallbackMappings: [],
   fallbackTransferPrompt: 'ระบบกำลังโอนสายไปยังเจ้าหน้าที่ศูนย์กลางค่ะ',
+  busyPrompt: 'ขออภัยค่ะ สายปลายทางไม่สะดวกรับสาย',
   silencePrompt: 'ไม่ยินเสียงของท่าน กรุณาพูดใหม่อีกครั้ง',
   operatorFallbackSip: 'sip:operator-queue@company.com',
 };
