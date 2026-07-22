@@ -146,14 +146,15 @@ export default function FallbackMappingsPage() {
         body: JSON.stringify({ search: searchFilter.trim() || undefined, domain: domain.trim() || undefined, top: 500 }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { users: EntraUserResult[]; total: number };
+      const data = await res.json() as { users: EntraUserResult[]; total: number; skipped?: number };
       const newRows = data.users.map((u, i) => ({
         id: nextId + i, name: u.displayName, aliases: '', upn: u.upn,
         extension: u.extension, lineURI: u.lineURI, phone: u.phone || u.extension,
       }));
       setNextId(nextId + data.users.length);
       setRows(newRows); syncToForm(newRows);
-      setFetchStatus(`Fetched ${data.total} user${data.total === 1 ? '' : 's'} from Entra ID.`);
+      const skipMsg = data.skipped ? ` (${data.skipped} duplicates skipped)` : '';
+      setFetchStatus(`Fetched ${data.total} user${data.total === 1 ? '' : 's'} from Entra ID.${skipMsg}`);
     } catch (err: any) {
       setFetchStatus(`Fetch failed: ${err.message}`);
     } finally { setFetching(false); }

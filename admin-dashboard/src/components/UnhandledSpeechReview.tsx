@@ -55,8 +55,10 @@ export default function UnhandledSpeechReview() {
     extension: string;
     lineURI: string;
     saving: boolean;
+    /** Index of selected existing mapping, -1 = new record */
+    selectedMappingIdx: number;
   } | null>(null);
-  const [existingMappings, setExistingMappings] = useState<Array<{name?: string; phone: string; upn?: string}>>([]);
+  const [existingMappings, setExistingMappings] = useState<Array<{name?: string; phone: string; upn?: string; aliases?: string[]}>>([]);
 
   // ── Fetch logs ──────────────────────────────────────────────────
   const fetchLogs = useCallback(async () => {
@@ -171,7 +173,7 @@ export default function UnhandledSpeechReview() {
   // ── Add to Contact Mappings ─────────────────────────────────────
   const handleAddToContactMappings = async () => {
     if (!mappingDialog || !token) return;
-    const { log, name, phone, upn, extension, lineURI } = mappingDialog;
+    const { log, name, phone, upn, extension, lineURI, selectedMappingIdx } = mappingDialog;
     setMappingDialog({ ...mappingDialog, saving: true });
 
     try {
@@ -180,14 +182,26 @@ export default function UnhandledSpeechReview() {
       const cfg = await configRes.json() as { fallbackMappings?: any[] };
 
       const mappings = cfg.fallbackMappings || [];
-      mappings.push({
-        name: name.trim() || log.userSpeech.trim(),
-        aliases: undefined,
-        upn: upn.trim() || undefined,
-        extension: extension.trim() || undefined,
-        lineURI: lineURI.trim() || undefined,
-        phone: phone.trim(),
-      });
+
+      if (selectedMappingIdx >= 0 && selectedMappingIdx < mappings.length) {
+        // ── Add alias to existing mapping ──
+        const target = mappings[selectedMappingIdx];
+        const newAlias = log.userSpeech.trim().toLowerCase();
+        if (!target.aliases) target.aliases = [];
+        if (!target.aliases.includes(newAlias)) {
+          target.aliases.push(newAlias);
+        }
+      } else {
+        // ── Create new record ──
+        mappings.push({
+          name: name.trim() || log.userSpeech.trim(),
+          aliases: undefined,
+          upn: upn.trim() || undefined,
+          extension: extension.trim() || undefined,
+          lineURI: lineURI.trim() || undefined,
+          phone: phone.trim(),
+        });
+      }
 
       const updateRes = await fetch('/api/admin/config', {
         method: 'POST',
@@ -199,12 +213,12 @@ export default function UnhandledSpeechReview() {
       await fetch('/api/admin/unhandled-logs/resolve', {
         method: 'POST',
         headers: authHeaders(token),
-        body: JSON.stringify({ id: log.id, note: 'added to contact mappings' }),
+        body: JSON.stringify({ id: log.id, note: selectedMappingIdx >= 0 ? 'alias added to existing mapping' : 'added to contact mappings' }),
       });
 
       setLogs((prev) => prev.filter((l) => l.id !== log.id));
       setMappingDialog(null);
-      setToast({ message: 'Added to Contact Mappings and log resolved.', type: 'success' });
+      setToast({ message: selectedMappingIdx >= 0 ? 'Alias added to existing mapping and log resolved.' : 'Added to Contact Mappings and log resolved.', type: 'success' });
     } catch (err: any) {
       setToast({ message: err.message || 'Operation failed.', type: 'error' });
       setMappingDialog((prev) => prev ? { ...prev, saving: false } : null);
@@ -260,7 +274,7 @@ export default function UnhandledSpeechReview() {
                     Ignore
                   </button>
                   <button
-                    onClick={() => setMappingDialog({ log, name: log.userSpeech, phone: '', upn: '', extension: '', lineURI: '', saving: false })}
+                    onClick={() => setMappingDialog({ log, name: log.userSpeech, phone: '', upn: '', extension: '', lineURI: '', saving: false, selectedMappingIdx: -1 })}
                     className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
                   >
                     + Add as Contact Mapping
@@ -330,7 +344,9 @@ export default function UnhandledSpeechReview() {
                     const idx = parseInt(e.target.value);
                     if (idx >= 0 && existingMappings[idx]) {
                       const m = existingMappings[idx];
-                      setMappingDialog((prev) => prev ? { ...prev, name: m.name || prev.name, phone: m.phone, upn: m.upn || '', extension: '', lineURI: '' } : null);
+                      setMappingDialog((prev) => prev ? { ...prev, name: m.name || prev.name, phone: m.phone, upn: m.upn || '', extension: '', lineURI: '', selectedMappingIdx: idx } : null);
+                    } else {
+                      setMappingDialog((prev) => prev ? { ...prev, selectedMappingIdx: -1 } : null);
                     }
                   }}
                     className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30">

@@ -185,21 +185,40 @@ router.post('/entra-users', async (req: Request, res: Response) => {
       }
     }
 
-    const users = (result.value || []).map((u: Record<string, unknown>) => {
-      const phone = String(u.telephoneNumber || '') || (Array.isArray(u.businessPhones) ? (u.businessPhones as string[])[0] || '' : '') || String(u.mobilePhone || '');
-      const lineUri = String(u.lineUri || '');
-      const ext = lineUri ? lineUri.replace(/\D/gu, '').slice(-4) : phone.replace(/\D/gu, '').slice(-4);
-      return {
-        displayName: String(u.displayName || ''),
-        upn: String(u.userPrincipalName || ''),
-        mail: String(u.mail || ''),
-        phone: phone.replace(/^tel:/iu, '').trim(),
-        lineURI: lineUri,
-        extension: ext && ext.length >= 4 ? ext : '',
-      };
-    });
+    // ── Pagination: follow @odata.nextLink to fetch all pages ──
+    let allUsers: Record<string, unknown>[] = [...(result.value || [])];
+    let nextLink: string | undefined = (result as any)['@odata.nextLink'];
+    while (nextLink) {
+      const pageResult = await graphClient.api(nextLink).get() as { value?: Record<string, unknown>[]; '@odata.nextLink'?: string };
+      allUsers = allUsers.concat(pageResult.value || []);
+      nextLink = pageResult['@odata.nextLink'];
+    }
 
-    res.json({ users, total: users.length });
+    // ── Load existing mappings for duplicate check ──
+    const existingUpns = new Set(
+      (cfg.fallbackMappings || []).map((m: any) => m.upn?.toLowerCase()).filter(Boolean)
+    );
+
+    const users = allUsers
+      .filter((u: Record<string, unknown>) => {
+        const upn = String(u.userPrincipalName || '').toLowerCase();
+        return !existingUpns.has(upn);
+      })
+      .map((u: Record<string, unknown>) => {
+        const phone = String(u.telephoneNumber || '') || (Array.isArray(u.businessPhones) ? (u.businessPhones as string[])[0] || '' : '') || String(u.mobilePhone || '');
+        const lineUri = String(u.lineUri || '');
+        const ext = lineUri ? lineUri.replace(/\D/gu, '').slice(-4) : phone.replace(/\D/gu, '').slice(-4);
+        return {
+          displayName: String(u.displayName || ''),
+          upn: String(u.userPrincipalName || ''),
+          mail: String(u.mail || ''),
+          phone: phone.replace(/^tel:/iu, '').trim(),
+          lineURI: lineUri,
+          extension: ext && ext.length >= 4 ? ext : '',
+        };
+      });
+
+    res.json({ users, total: users.length, skipped: allUsers.length - users.length });
   } catch (err: any) {
     console.error('[admin] Entra users fetch error:', err.message);
     res.status(500).json({ error: `Failed to fetch users: ${err.message}` });
