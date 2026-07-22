@@ -47,11 +47,9 @@ export function generateTransferResponse(
   const cfg = getConfig();
   const isConsultative = cfg.routingMode === 'Consultative Transfer';
 
-  if (isConsultative && callerName) {
-    return generateConsultativeTransferResponse(targetUpn, callerName, cfg.transferTimeout || 19);
-  }
-
-  const fallbackPrompt = promptText || 'กำลังโอนสายไปยังผู้รับสายค่ะ';
+  const fallbackPrompt = isConsultative
+    ? 'กรุณารอสักครู่ กำลังติดต่อผู้รับสายค่ะ'
+    : (promptText || 'กำลังโอนสายไปยังผู้รับสายค่ะ');
 
   // Build the SIP URI with port and transport
   const sipUri = buildSipUri(targetUpn);
@@ -63,56 +61,19 @@ export function generateTransferResponse(
   };
 
   // 2. The transfer event with the SIP target in parameters
+  //    Always use Blind Transfer — VoiceAI Connect handles the actual call.
+  //    When consultative mode is on, the webhook handles transfer failure
+  //    events (busy/timeout/reject) and plays "สายไม่ว่าง" TTS + fallback.
   const transferActivity: BotActivity = {
     type: BotActivityType.event,
     name: BotActivityEventName.transfer,
     parameters: {
       target: sipUri,
-      routingMode: getConfig().routingMode || 'Blind Transfer',
+      routingMode: 'Blind Transfer',
     },
   };
 
   return {
     activities: [promptActivity, transferActivity],
-  };
-}
-
-/**
- * Generates a consultative transfer response.
- * In consultative mode the bot first asks the caller to wait, then
- * the VoiceAI Connect calls the target and bridges the media.
- * If the target is busy / doesn't answer within `timeoutSec`, the VoiceAI
- * will send a transfer failure event which the webhook handles.
- */
-export function generateConsultativeTransferResponse(
-  targetUpn: string,
-  callerName: string,
-  timeoutSec: number = 19,
-): { activities: BotActivity[] } {
-  const sipUri = buildSipUri(targetUpn);
-
-  const waitingPrompt: BotActivity = {
-    type: BotActivityType.message,
-    text: cleanTextForThaiTts('กรุณารอสักครู่ กำลังติดต่อผู้รับสายค่ะ'),
-  };
-
-  const consultativeInfo: BotActivity = {
-    type: BotActivityType.message,
-    text: cleanTextForThaiTts(`มีสายจาก ${callerName} คุณต้องการรับสายไหมคะ`),
-  };
-
-  const transferActivity: BotActivity = {
-    type: BotActivityType.event,
-    name: BotActivityEventName.transfer,
-    parameters: {
-      target: sipUri,
-      routingMode: 'Consultative Transfer',
-      ringTimeoutSec: timeoutSec,
-      consultativePrompt: `มีสายจาก ${callerName} คุณต้องการรับสายไหมคะ`,
-    },
-  };
-
-  return {
-    activities: [waitingPrompt, transferActivity],
   };
 }
