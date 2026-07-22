@@ -44,26 +44,14 @@ export function generateTransferResponse(
   promptText?: string,
   callerName?: string,
 ): { activities: BotActivity[] } {
-  const cfg = getConfig();
-  const isConsultative = cfg.routingMode === 'Consultative Transfer';
-
-  const fallbackPrompt = isConsultative
-    ? 'กรุณารอสักครู่ กำลังติดต่อผู้รับสายค่ะ'
-    : (promptText || 'กำลังโอนสายไปยังผู้รับสายค่ะ');
-
-  // Build the SIP URI with port and transport
+  const fallbackPrompt = promptText || 'กำลังโอนสายไปยังผู้รับสายค่ะ';
   const sipUri = buildSipUri(targetUpn);
 
-  // 1. A TTS message to play before the transfer
   const promptActivity: BotActivity = {
     type: BotActivityType.message,
     text: cleanTextForThaiTts(fallbackPrompt),
   };
 
-  // 2. The transfer event with the SIP target in parameters
-  //    Always use Blind Transfer — VoiceAI Connect handles the actual call.
-  //    When consultative mode is on, the webhook handles transfer failure
-  //    events (busy/timeout/reject) and plays "สายไม่ว่าง" TTS + fallback.
   const transferActivity: BotActivity = {
     type: BotActivityType.event,
     name: BotActivityEventName.transfer,
