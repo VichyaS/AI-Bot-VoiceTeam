@@ -55,16 +55,27 @@ export default function ReportPage() {
     return () => clearInterval(interval);
   }, [autoRefresh, fetchStats]);
 
-  const downloadCsv = () => {
-    const t = token || localStorage.getItem('ac_bot_admin_token');
-    const a = document.createElement('a');
-    a.href = `/api/admin/call-stats/csv?days=${days}`;
-    a.setAttribute('download', `call-history-${new Date().toISOString().slice(0, 10)}.csv`);
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setToast({ message: 'Downloading CSV...', type: 'success' });
+  const downloadCsv = async () => {
+    try {
+      const t = token || localStorage.getItem('ac_bot_admin_token');
+      const res = await fetch(`/api/admin/call-stats/csv?days=${days}`, {
+        headers: { 'Authorization': `Bearer ${t}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.setAttribute('download', `call-history-${new Date().toISOString().slice(0, 10)}.csv`);
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setToast({ message: 'Downloading CSV...', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: `Download failed: ${err.message}`, type: 'error' });
+    }
   };
 
   const formatNumber = (n: number) => n.toLocaleString();
